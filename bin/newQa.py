@@ -28,7 +28,7 @@ except:
 #
 #############################################################
 
-def main(qaName, wwwRoot=None, force=False, forceClean=False):
+def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue"):
 
     # verify that we have WWW_ROOT and TESTING_DISPLAYQA_DIR
     envVars = ['TESTING_DISPLAYQA_DIR']
@@ -93,7 +93,7 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False):
                 
     # copy the www/ to the destination
     src = os.path.join(dqaDir, "www")
-    patterns = ["php", "css", "ico"]
+    patterns = ["php", "js"]
     files = []
     for p in patterns:
         files += glob.glob(os.path.join(src, "[a-zA-Z]*." + p))
@@ -106,6 +106,30 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False):
         cmd = "cp -r %s %s" % (f, dest)
         os.system(cmd)
 
+    # handle the css and favicon files based on color chosen
+    style_base = "style_"+color+".css"
+    favicon_base = "favicon_"+color+".png"
+    files = [
+        [style_base,   os.path.join(src, style_base),   os.path.join(dest, "style.css")],
+        [favicon_base, os.path.join(src, favicon_base), os.path.join(dest, "favicon.ico")],
+        ]
+        
+    for file_base, file_color, file_dest in files:
+        if os.path.exists(file_color):
+            print "installing: ", file_base
+            os.system("cp %s %s" % (file_color, file_dest))
+        else:
+            color_files = glob.glob(os.path.join(src, "style_*.css"))
+            colors = []
+            for f in color_files:
+                m = re.search("style_(.*).css", f)
+                if m:
+                    colors.append(m.group(1))
+            msg = "Cannot install color '"+color+"'. "
+            msg += "Available colors: " + ", ".join(colors)
+            print msg
+            sys.exit()
+        
     print ""
     print "Created new QA site served from:"
     print "   ",dest
@@ -128,6 +152,9 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False):
 
 if __name__ == '__main__':
     parser = optparse.OptionParser(usage=__doc__)
+    
+    parser.add_option('-c', '--color', default="blue",
+                      help="Specify style color (default=%default)")
     parser.add_option("-f", '--force', default=False, action="store_true",
                       help="Force a reinstall if already exists (default=%default)")
     parser.add_option("-F", '--forceClean', default=False, action="store_true",
@@ -154,5 +181,5 @@ if __name__ == '__main__':
     if opts.forceClean:
         opts.force = True
         
-    main(qaName, opts.root, opts.force, opts.forceClean)
+    main(qaName, opts.root, opts.force, opts.forceClean, opts.color)
     

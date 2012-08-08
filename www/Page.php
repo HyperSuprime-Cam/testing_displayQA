@@ -4,6 +4,7 @@ include_once("Html.php");
 class Page {
 
     private $_css = "style.css";
+    private $_js  = "script.js";
     private $_content = array();
     private $_title;
     private $_h1;
@@ -102,6 +103,7 @@ class Page {
     private function _htmlhead() {
         $title = $this->_title;
         $css   = $this->_css;
+        $js    = $this->_js;
         if (! file_exists($css) ) {
             $css = "../$css";
         }
@@ -109,10 +111,10 @@ class Page {
             "<title>$title</title>\n".
             "<link rel=\"stylesheet\" type=\"text/css\" href=\"$css\" media=\"screen\" />\n".
             "<link rel=\"icon\" href=\"favicon.ico\" type=\"image/x-icon\" />\n".
+            "<script src=\"$js\" type=\"text/javascript\" language=\"javascript\"></script>\n".
             "</head>\n";
         return $s;
     }
-    
 
     private function _getSidebars() {
         $out = "";

@@ -18,6 +18,8 @@ from matplotlib import colors
 
 class QaFigure(object):
     """A wrapper for a matplotlib figure, and a Baseclass for more complicated QA figures. """
+
+    count = 0
     
     def __init__(self, size=(4.0, 4.0), dpi=100): # (512, 512), DPI=100):
         """
@@ -33,6 +35,7 @@ class QaFigure(object):
         self.mapAreas    = []
         self.mapTransformed = True
 
+        QaFigure.count += 1
         
     def reset(self):
         self.fig.clf()
@@ -62,9 +65,9 @@ class QaFigure(object):
         else:
             mapList = self.getTransformedMap()
             
-        if len(mapList) > 0:
-            fp = open(path, 'w')
+        fp = open(path, 'w')
 
+        if len(mapList) > 0:
             # don't include overplotted map areas
             n = 100
             xpmax, ypmax = self.fig.transFigure.transform((1.0, 1.0))
@@ -80,7 +83,7 @@ class QaFigure(object):
                     fp.write("%s %d %d %d %d %s\n" % (label, x0, y0, x1, y1, info))
                     haveLookup[ix,iy] = 1
                     
-            fp.close()
+        fp.close()
 
 
     def getTransformedMap(self):

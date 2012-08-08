@@ -275,7 +275,7 @@ function getToggleNames() {
     $testDir = getDefaultTest();
 
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
 
@@ -361,7 +361,7 @@ function haveMaps($testDir) {
     $haveMaps = false;
     $navmapFile = "";
     while(false !== ($f = $d->read())) {
-	#p($f,1);
+        ##p($f,1);
         if (preg_match("/\.navmap/", $f)) {$navmapFile =  "$testDir/$f";}
         if (preg_match("/\.(map|navmap)$/", $f)) { $haveMaps = true; }
     }
@@ -373,7 +373,7 @@ function getActive() {
 
     # if there are no tests yet, just default to .*
     if (strlen($testDir) < 1) {
-	return ".*";
+        return ".*";
     }
     
     # see if there are maps associated with this
@@ -386,7 +386,7 @@ function getActive() {
     if (strlen($navmapFile) > 0) {
         $lines = file($navmapFile);
         foreach ($lines as $line) {
-	    #p($line, 1);
+            ##p($line, 1);
             $arr = preg_split("/\s+/", $line);
             $validActive[] = $arr[0];
         }
@@ -595,7 +595,7 @@ function writeTable_ListOfTestResults() {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
     
@@ -677,7 +677,7 @@ function writeTable_OneTestResult($label) {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     
     if (empty($label)) {
@@ -732,7 +732,7 @@ function write_OneBacktrace($label) {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     
     $out = "<h2>Backtrace</h2><br/>\n";
@@ -840,11 +840,39 @@ function writeTable_summarizeMetadata($keys, $group=".*") {
 
 function getDescription() {
 
+    $testDir = getDefaultTest();
+    if (strlen($testDir) < 1) {
+        return "";
+    }
+    $active = getActive();
+    $db = connect($testDir);
+    $cmd = "select key, value from metadata";
+    $prep = $db->prepare($cmd);
+    $prep->execute();
+    $results = $prep->fetchAll();
+    $db = null;
+    
+    $description = "";
+    foreach ($results as $r) {
+        if (preg_match("/[dD]escription/", $r['key'])) {
+            $description = $r['value'];
+        }
+    }
+    
+    $link = "Description: <a href=\"#\" id=\"displayText\"></a><br/><br/>\n".
+        "<div id=\"toggleText\" style=\"display:none\">$description<br/></div>\n";
+    
+    return $link;
+
+}
+
+function getDescription2() {
+
     $show = getShowHide();
     
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
     $db = connect($testDir);
@@ -877,7 +905,7 @@ function getToggleLinks() {
     $show = getShowHide();
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
     
@@ -907,7 +935,7 @@ function writeTable_metadata() {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
         
@@ -944,7 +972,7 @@ function writeMappedFigures($suffix="map") {
     $testDir = getDefaultTest();
 
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $active = getActive();
 
@@ -1057,7 +1085,7 @@ function writeFigures() {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     
     $active = getActive();
@@ -1742,12 +1770,12 @@ function writeTable_SummarizeAllGroups() {
         foreach ($extraKeys as $k) {
             if (array_key_exists($i, $arr)) {
                 $values = $arr[$i];
-		$mean = array_sum($values)/$nMatch;
-		$stdev = stdev($values);
+                $mean = array_sum($values)/$nMatch;
+                $stdev = stdev($values);
                 if (preg_match("/^n/", $k)) {
                     $entry = sprintf("<div title=\"&plusmn;%d\">%d</div>", $stdev, $mean);
                 } else {
-		    $fmt = ($mean > 0.1) ? "%.2f" : "%.3f";
+                    $fmt = ($mean > 0.1) ? "%.2f" : "%.3f";
                     $entry = sprintf("<div title=\"&plusmn;$fmt\">$fmt</div>", $stdev, $mean);
                 }                    
                     
@@ -1797,7 +1825,7 @@ function writeTable_SummarizeAllGroups() {
                 if (preg_match("/^n/", $k)) {
                     $row[] = sprintf("<div title=\"&plusmn;%d %s\">%d</div>", $e, $u, $v);
                 } else {
-		    $fmt = (floatval($v) < 0.1) ? "%.3f" : "%.2f";
+                    $fmt = (floatval($v) < 0.1) ? "%.3f" : "%.2f";
                     $row[] = sprintf("<div title=\"&plusmn;$fmt %s\">$fmt</div>", $e, $u, $v);
                 }
             } else {
@@ -1825,7 +1853,7 @@ function writeTable_Logs() {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     
     $db = connect($testDir);
@@ -1887,7 +1915,7 @@ function writeTable_EupsSetups() {
 
     $testDir = getDefaultTest();
     if (strlen($testDir) < 1) {
-	return "";
+        return "";
     }
     $db = connect($testDir);
 
@@ -2230,17 +2258,20 @@ function writeTable_listTestResults() {
     }
     $table->addHeader($head);
 
+    $showTotals = false;
+    
     $nt = count($head);
-    $filters = array_fill(0, 6, array_fill(0, $nt, 0.0));
+    $filters = array_fill(0, 7, array_fill(0, $nt, 0.0));
     $filters[0][0] = "u";
     $filters[1][0] = "g";
     $filters[2][0] = "r";
     $filters[3][0] = "i";
     $filters[4][0] = "z";
     $filters[5][0] = "y";
-
-    $flookup = array("u"=>0, "g"=>1, "r"=>2, "i"=>3, "z"=>4, "y"=>5);
-    $nfilters = array("u"=>0, "g"=>0, "r"=>0, "i"=>0, "z"=>0, "y"=>0);
+    $filters[6][0] = "x";
+    
+    $flookup = array("u"=>0, "g"=>1, "r"=>2, "i"=>3, "z"=>4, "y"=>5, "x"=>6);
+    $nfilters = array("u"=>0, "g"=>0, "r"=>0, "i"=>0, "z"=>0, "y"=>0, "x"=>0);
     
     $totals = array_fill(0, count($head), 0.0);
     $rows = array();
@@ -2249,6 +2280,9 @@ function writeTable_listTestResults() {
         if (strlen(trim($group)) == 0) { continue; }
 
         $f = substr($group, -1);
+        if (!preg_match("/^[ugrizy]$/", $f)) {
+            $f = 'x';
+        }
         $i_f = $flookup[$f];
         $glink = "<a href=\"group.php?group=$group\" title=\"$group\">".$group."</a>";
         $row = array($iGroup, $glink);
@@ -2308,6 +2342,9 @@ function writeTable_listTestResults() {
     # totals per filter
     foreach($filters as $farr) {
         $f = $farr[0];
+        if ($f == 'x') {
+            continue;
+        }
         $i_f = $flookup[$f];
         $row = array("n=".$nfilters[$f], $f);
         for($i=2; $i < count($filters[$i_f]); $i++) {
