@@ -674,7 +674,7 @@ class TestSet(object):
            plotargs = "" 
 
         enviro_path = os.path.join(self.wwwBase, "environment.php")
-        if not os.path.exists(enviro_path):
+        if not os.path.exists(enviro_path) or os.stat(enviro_path).st_size == 0:
             fp = open(enviro_path, 'w')
             s  = "<?php\n"
             s += "$qa_environment = array(\n"

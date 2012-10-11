@@ -135,11 +135,11 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     print "   ",dest
 
 
+    envFile = os.path.join(dest, "environment.php")
     if forceClean:
         print ""
         print "Cleaning existing data from", dest, ":"
         dbFile = os.path.join(dest, "db.sqlite3")
-        envFile = os.path.join(dest, "environment.php")
         for f in [dbFile, envFile]:
             if os.path.exists(f):
                 print "   ", os.path.split(f)[1]
@@ -148,6 +148,12 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
             print "   ", os.path.split(testDir)[1]
             shutil.rmtree(testDir)
 
+
+    # touch the environment file to make sure it's there.
+    with file(envFile, 'a'):
+        os.utime(envFile, None)
+
+                
 #############################################################
 # end
 #############################################################
