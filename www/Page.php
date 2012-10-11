@@ -101,7 +101,7 @@ class Page {
             "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n";
 
         # Something on hsca is unable to process the site with strict DOCTYPE
-        if (preg_match("/hsca/", $_SERVER["SERVER_NAME"])) {
+        if (preg_match("/hsca.ipmu.jp/", $_SERVER["SERVER_NAME"])) {
             $s = "<html>\n";
         }
         
