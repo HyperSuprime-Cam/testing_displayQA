@@ -96,14 +96,16 @@ function writeImgTag($dir, $filename, $details) {
     if ($debug) {
         global $qa_environment;
         
+        $s = "";
         $gen = "loaded";
         if (! file_exists($path) || filesize($path) < 10) {
             $gen = "generated";
             foreach ($qa_environment as $envar => $value) {
                 putenv($envar."=".$value);
+                $s .= "$envar = ".join("<br/>", preg_split('/:/', "$value"))."<br/>\n";
             }
             system($path.".sh 2>&1", $output);
-            $s = $output;
+            $s .= $output;
         }
         echo "This image: ".$gen."<br/>\n";
         echo "Sys-call output: ".$output."<br/>\n";
