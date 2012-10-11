@@ -229,7 +229,7 @@ function getTestLinksThisGroup($page) {
     $outString = "";
     
     # make the table for the test links
-    if ($page == 'summary') {
+    if ($page === 'summary') {
         $table = new Table("width=\"100%\"");
         $row = array();
         foreach ($testDirs as $label=>$testDir) {
@@ -248,7 +248,7 @@ function getTestLinksThisGroup($page) {
     foreach ($navDirs as $label=>$groupDirInfo) {
         list($g, $groupDir) = $groupDirInfo;
         if ($groupDir) {
-            $link = ($page=='group') ?
+            $link = ($page==='group') ?
                 "<a href=\"group.php?group=$g\" title=\"$g\">".$label."</a>":
                 "<a href=\"summary.php?test=".$groupDir."&active=$active&group=$g\">".$label."</a>";
         } else {
@@ -1106,7 +1106,10 @@ function writeMappedFigures($suffix="map") {
 }
 
 
-function writeFigureArray($images_in) {
+function writeFigureArray($images_in, $testDir) {
+
+    $group = getGroup();
+
 
     # identify the positions of the sensors according to the camera
     $cams = array(
@@ -1115,15 +1118,23 @@ function writeFigureArray($images_in) {
               "Ponyo",   "San",      "Satsuki", "Sheeta", "Sophie"),
         'hsc' =>
         array(
-            "dummy",  "dummy", "dummy","hsc101","hsc082","hsc080","hsc078","hsc076","hsc074","hsc072","hsc070","hsc100","dummy",  "dummy", "dummy",
-            "dummy", "hsc068","hsc066","hsc064","hsc062","hsc060","hsc058","hsc056","hsc054","hsc052","hsc050","hsc048","hsc097","hsc099", "dummy",
-            "hsc046","hsc044","hsc042","hsc040","hsc038","hsc036","hsc034","hsc032","hsc030","hsc028","hsc026","hsc024","hsc091","hsc093","hsc095",
-            "hsc022","hsc020","hsc018","hsc016","hsc014","hsc012","hsc010","hsc008","hsc006","hsc004","hsc002","hsc000","hsc085","hsc087","hsc089",
-            "hsc088","hsc086","hsc084","hsc001","hsc003","hsc005","hsc007","hsc009","hsc011","hsc013","hsc015","hsc017","hsc019","hsc021","hsc023",
-            "hsc094","hsc092","hsc090","hsc025","hsc027","hsc029","hsc031","hsc033","hsc035","hsc037","hsc039","hsc041","hsc043","hsc045","hsc047",
-            "dummy", "hsc098","hsc096","hsc049","hsc051","hsc053","hsc055","hsc057","hsc059","hsc061","hsc063","hsc065","hsc067","hsc069", "dummy",
-            "dummy",  "dummy", "dummy","hsc102","hsc071","hsc073","hsc075","hsc077","hsc079","hsc081","hsc083","hsc103","dummy",  "dummy", "dummy")
+            "dum","dum","dum","101","082","080","078","076","074","072","070","100","dum","dum","dum",
+            "dum","068","066","064","062","060","058","056","054","052","050","048","097","099","dum",
+            "046","044","042","040","038","036","034","032","030","028","026","024","091","093","095",
+            "022","020","018","016","014","012","010","008","006","004","002","000","085","087","089",
+            "088","086","084","001","003","005","007","009","011","013","015","017","019","021","023",
+            "094","092","090","025","027","029","031","033","035","037","039","041","043","045","047",
+            "dum","098","096","049","051","053","055","057","059","061","063","065","067","069","dum",
+            "dum","dum","dum","102","071","073","075","077","079","081","083","103","dum","dum","dum")
         );
+
+    # append the extra characters to the hsc strings
+    for($i=0; $i<count($cams['hsc']); $i++) {
+        $tmp = "hsc".$cams['hsc'][$i]."--0".$cams['hsc'][$i];
+        $cams['hsc'][$i] = $tmp;
+    }
+
+    $areaLabelFormats = array("suprimecam" => "%s--%04d", "hsc" => "%s--%04d");
 
     $widths   = array('suprimecam' => 5, 'hsc' => 15);
     $heights  = array('suprimecam' => 2, 'hsc' => 8);
@@ -1196,7 +1207,11 @@ function writeFigureArray($images_in) {
         if (array_key_exists($i, $images_new) ) {
             $im = preg_replace("/.png$/", "Thumb.png", $images_new[$i]);
         }
-        $imarray[] = "<img src='$im' width='$im_width'>\n";
+        
+        $imtag = "<img src='$im' width='$im_width'>";
+        $active = $cams[$cam][$i];
+        $link = "<a href=\"summary.php?test=".$testDir."&active=$active&group=$group\" title=\"$active\">$imtag</a>";
+        $imarray[] = "$link\n";
         if ($i%$mod == $mod-1) {
             $tab->addRow($imarray);
             $imarray = array();
@@ -1248,7 +1263,7 @@ function writeFigures() {
     }
 
     if ($active == 'all' && count($figures) == 0 && !preg_match("/performanceQa/", $testDir)) {
-        return writeFigureArray($allfilenames);
+        return writeFigureArray($allfilenames, $testDir);
     }
         
     
@@ -1731,9 +1746,10 @@ function writeTable_SummarizeAllGroups() {
             continue;
         }
         foreach ($dirs[$group] as $testDir) {
+
             # must deal with default group "" specially
             $parts = preg_split("/_/", $testDir);
-            if (strlen($parts[1]) > 0 and $group == "") { continue;}
+            if (strlen($parts[1]) > 0 and $group === "") { continue;}
 
             if ($summs == -1 or !array_key_exists($testDir, $summs)) {
                 $summ = summarizeTestByCounting($testDir);
@@ -1782,10 +1798,9 @@ function writeTable_SummarizeAllGroups() {
 
             # must deal with default group "" specially
             $parts = preg_split("/_/", $testDir);
-            if (strlen($parts[1]) > 0 and $group == "") {
+            if (strlen($parts[1]) > 0 and $group === "") {
                 continue;
             }
-
             if ($summs == -1 or !array_key_exists($testDir, $summs)) {
                 $summ = summarizeTestByCounting($testDir);
             } else {
@@ -1827,7 +1842,7 @@ function writeTable_SummarizeAllGroups() {
             continue;
         }
         
-        if ($group == "") {
+        if ($group === "") {
             $testLink = "<a href=\"group.php?group=\">Top level</a>";
         } else {
             $testLink = "<a href=\"group.php?group=$group\">$group</a>";
