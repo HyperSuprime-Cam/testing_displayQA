@@ -2,6 +2,7 @@
 
 include_once("Html.php");
 include_once("libdb.php");
+include_once("environment.php");
 
 date_default_timezone_set('America/New_York');
 
@@ -87,9 +88,30 @@ function getDefaultH1() {
 }
 
 function writeImgTag($dir, $filename, $details) {
+    
     $path = "$dir/$filename";
-    #$debug = (! file_exists($path) || filesize($path) < 10) ? "generating" : "loaded";
-    $s = "<img src=\"imageGenerate.php?imgen_path=$path\" $details>"; #"<b>$debug</b>";
+    
+    $debug = false;
+    $s = "Running in with debug=true;";
+    if ($debug) {
+        global $qa_environment;
+        
+        $gen = "loaded";
+        if (! file_exists($path) || filesize($path) < 10) {
+            $gen = "generated";
+            foreach ($qa_environment as $envar => $value) {
+                putenv($envar."=".$value);
+            }
+            system($path.".sh 2>&1", $output);
+            $s = $output;
+        }
+        echo "This image: ".$gen."<br/>\n";
+        echo "Sys-call output: ".$output."<br/>\n";
+        
+    } else {
+        $s = "<img src=\"imageGenerate.php?imgen_path=$path\" $details>";
+    }
+
     return $s;
 }
 

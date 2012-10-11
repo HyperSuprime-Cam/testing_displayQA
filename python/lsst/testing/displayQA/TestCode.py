@@ -7,7 +7,7 @@ import inspect
 import stat
 import shutil
 import eups
-import sqlite3 as sqlite
+import sqlite as sqlite
 #import apsw
 import errno
 import cPickle as pickle
@@ -106,6 +106,8 @@ class TestSet(object):
         @param group  A category this testSet belongs to
         """
 
+        self.conn = None
+        
         missing = []
         for env in ["WWW_ROOT", "WWW_RERUN"]:
             if not os.environ.has_key(env):
@@ -113,8 +115,6 @@ class TestSet(object):
         if len(missing) > 0:
             raise Exception("Must set environment variable:\n", "\n".join(missing))
 
-
-        self.conn = None
 
         self.useCache = useCache
         self.wwwCache = wwwCache
@@ -714,7 +714,7 @@ class TestSet(object):
         if masterToggle is None  or  toggle == masterToggle:
             self.shelve(filename, dataDict, useCache=True)
         else:
-            for f in glob.glob(cachePath+".shelve.*"):
+            for f in glob.glob(cachePath+".shelve*"):
                 shelfLink = re.sub(masterToggle, toggle, f)
                 if not os.path.exists(shelfLink):
                     os.symlink(f, shelfLink)
@@ -745,7 +745,7 @@ class TestSet(object):
             if masterToggle is None  or  toggle == masterToggle:
                 self.shelve(filename, dataDict, useCache=True)
             else:
-                for f in glob.glob(cachePath+".shelve.*"):
+                for f in glob.glob(cachePath+".shelve*"):
                     shelfLink = re.sub(masterToggle, toggle, f)
                     if not os.path.exists(shelfLink):
                         os.symlink(f, shelfLink)
