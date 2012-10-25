@@ -815,13 +815,14 @@ class TestSet(object):
             self.cacheClose()
 
 
-    def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False):
+    def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False, doCopy=True):
         """Add a figure to this test suite.
         
         @param filename The basename of the figure.
         @param caption  text describing the figure
         @param areaLabel a string associating the figure with a map area in a navigation figure
         @param navMap    Identify this figure as a navigation map figure containing linked map areas.
+        @param doCopy   if True make a copy of the file, if False make a symlink to the file.
         """
 
         orig_path, orig_file = os.path.split(basename)
@@ -835,15 +836,17 @@ class TestSet(object):
 
         path = os.path.join(self.wwwDir, filename)
 
-        #os.symlink(basename, path)
-        shutil.copyfile(basename, path)
+        if doCopy:
+            shutil.copyfile(basename, path)
+        else:
+            os.symlink(basename, path)
 
         convert = which("convert")
         size = "200x200"
         if convert:
             os.system(convert + " " + path + " -resize "+size+" " + re.sub(".png$", "Thumb.png", path))
-            
-        
+
+
         keys = [x.split()[0] for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
