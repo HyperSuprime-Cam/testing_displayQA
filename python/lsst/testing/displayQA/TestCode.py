@@ -100,13 +100,16 @@ class Test(object):
 class TestSet(object):
     """A container for Test objects and associated matplotlib figures."""
     
-    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False):
+    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False, sqliteSuffix=""):
         """
         @param label  A name for this testSet
         @param group  A category this testSet belongs to
         """
 
         self.conn = None
+        self.sqliteSuffix = sqliteSuffix
+        if len(sqliteSuffix) > 0:
+            self.sqliteSuffix = "-" + self.sqliteSuffix
         
         missing = []
         for env in ["WWW_ROOT", "WWW_RERUN"]:
@@ -196,9 +199,34 @@ class TestSet(object):
                 curs.execute(cmd)
                 self.cacheClose()
 
+    def accrete(self):
+        dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
+
+        # open this database
+        thisCurs = self.connect()
+
+        # go to each db and dump it
+        for db in dbs:
+
+            # go through all 'INSERT' statements and execute on outself
+            conn = sqlite.connect(db)
+            for d in conn.iterdump():
+                if re.search("INSERT INTO", d):
+                    # kill the PK so it'll autoincrement
+                    d2 = re.sub("VALUES\(\d+,", "VALUES(NULL,", d)
+                    d3 = d2
+                    # if this is the summary table, use REPLACE to handle unique 'label' column
+                    if re.search(self.summTable, d2):
+                        d3 = re.sub("INSERT", "REPLACE", d2)
+
+                    thisCurs.execute(d3)
+            conn.close()
+        self.conn.commit()
+        self.close()
+        
 
     def connect(self):
-        self.dbFile = os.path.join(self.wwwDir, "db.sqlite3")
+        self.dbFile = os.path.join(self.wwwDir, "db"+self.sqliteSuffix+".sqlite3")
         if useApsw:
             self.conn = apsw.Connetion(self.dbFile)
         else:

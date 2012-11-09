@@ -883,10 +883,14 @@ function getDescription() {
     }
     $active = getActive();
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select key, value from metadata";
+        $prep = $db->prepare($cmd);
+        $prep->execute();
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
     
     $description = "";
@@ -979,10 +983,14 @@ function writeTable_metadata() {
     $meta = new Table();
     
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select key, value from metadata";
+        $prep = $db->prepare($cmd);
+        $prep->execute();
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
 
     $sql = "";
@@ -1192,6 +1200,12 @@ function writeFigureArray($images_in, $testDir) {
     }
         
 
+    # if we didn't figure out the camera, there's no point in trying.
+    # ... just return ""
+    if (strlen($cam) == 0) {
+        return "";
+    }
+
     # now we know the camera, so look up where the sensor goes.
     $images_new = array();
     $camLookup = array_flip($cams[$cam]);
@@ -1273,10 +1287,14 @@ function writeFigures() {
     
     ## get the captions
     $db = connect($testDir);
-    $cmd = "select filename, caption from figure";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select filename, caption from figure";
+        $prep = $db->prepare($cmd);
+        $prep->execute();
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
 
     $captions = array();
@@ -1405,6 +1423,32 @@ function summarizeTestByCounting($testDir) {
 #}
 
 
+function writeQuickLookSummary() {
+    $dir = "./";
+    $group = getGroup();
+    $dirs = glob("test_".$group."_*");
+    sort($dirs);
+
+    $meta = new Table();
+    foreach ($dirs as $testDir) {        
+        
+        $db = connect($testDir);
+        $cmd = "select key, value from metadata";
+        $prep = $db->prepare($cmd);
+        $prep->execute();
+        $results = $prep->fetchAll();
+        $db = null;
+
+        foreach ($results as $r) {
+            if (preg_match("/([sS][qQ][Ll]|[dD]escription|PipeQA|DisplayQA)/", $r['key'])) {
+                continue;
+            }
+            $meta->addRow(array($r['key'].":", $r['value']));
+        }
+    }
+    return $meta->write();
+    
+}
 
 
 function writeTable_SummarizeAllTests() {
@@ -1417,7 +1461,7 @@ function writeTable_SummarizeAllTests() {
     $msg .= "group: $group ".date("H:i:s")."<br/>";
 
     ## go through all directories and look for .summary files
-    $d = @dir($dir) or dir("");
+    #$d = @dir($dir) or dir("");
     $dirs = glob("test_".$group."_*"); #array();
     #while(false !== ($testDir = $d->read())) {
     #    $dirs[] = $testDir;
