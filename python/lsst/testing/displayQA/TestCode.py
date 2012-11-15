@@ -160,8 +160,8 @@ class TestSet(object):
             self.summTable : ["label text unique", "value double",
                               "lowerlimit double", "upperlimit double", "comment text",
                               "backtrace text"],
-            self.figTable  : ["filename text", "caption text"],
-            self.metaTable : ["key text", "value text"],
+            self.figTable  : ["filename text unique", "caption text"],
+            self.metaTable : ["key text unique", "value text"],
             }
 
         self.stdKeys = ["id integer primary key autoincrement", "entrytime timestamp DEFAULT (strftime('%s','now'))"]
@@ -182,11 +182,11 @@ class TestSet(object):
             self.failuresTable = "failures"
             self.allFigTable = "allfigures"
             self.cacheTables = {
-                self.countsTable : ["test text", "ntest integer", "npass integer", "dataset text",
+                self.countsTable : ["test text unique", "ntest integer", "npass integer", "dataset text",
                                    "oldest timestamp", "newest timestamp", "extras text"],
                 self.failuresTable : ["testandlabel text unique", "value double",
                                       "lowerlimit double", "upperlimit double", "comment text"],
-                self.allFigTable : ["path text", "caption text"],
+                self.allFigTable : ["path text unique", "caption text"],
                 }
             
             self.countKeys = self.cacheTables[self.countsTable]
@@ -216,7 +216,9 @@ class TestSet(object):
                     d2 = re.sub("VALUES\(\d+,", "VALUES(NULL,", d)
                     d3 = d2
                     # if this is the summary table, use REPLACE to handle unique 'label' column
-                    if re.search(self.summTable, d2):
+                    if (re.search("INTO\s+\""+self.summTable, d2) or
+                        re.search("INTO\s+\""+self.metaTable, d2) or
+                        re.search("INTO\s+\""+self.figTable, d2)):
                         d3 = re.sub("INSERT", "REPLACE", d2)
 
                     thisCurs.execute(d3)
@@ -440,7 +442,7 @@ class TestSet(object):
         # we want to overwrite entries if they exist, or insert them if they don't
         
         # delete the rows which match the selectKeys
-        if True:
+        if False:
             where = []
             for key in selectKeys:
                 if isinstance(replacements[key], str):
