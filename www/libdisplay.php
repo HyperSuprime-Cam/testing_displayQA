@@ -998,10 +998,14 @@ function writeTable_metadata() {
         if (preg_match("/[dD]escription/", $r['key'])) {
             continue;
         }
-        if (preg_match("/[sS][qQ][Ll]/", $r['key'])) {
-            $sql .= wordwrap("<b>".$r['key']."</b><br/>".$r['value'], 40, "<br/>\n")."<br/><br/>\n";
+        if (preg_match("/SQL_(match|src)-/", $r['key'])) {
+            if ($active == 'all') { continue; }
+            if (preg_match("/$active/", $r['key'])) {
+                $sql .= wordwrap("<b>".$r['key']."</b><br/>".$r['value'], 40, "<br/>\n")."<br/><br/>\n";
+            }
             continue;
         }        
+
         $meta->addRow(array($r['key'].":", $r['value']));
     }
     $meta->addRow(array("Active:", $active));
