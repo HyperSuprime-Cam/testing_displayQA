@@ -199,6 +199,12 @@ class TestSet(object):
                 curs.execute(cmd)
                 self.cacheClose()
 
+                
+    def __del__(self):
+        self.close()
+        self.cacheClose()
+
+
     def accrete(self):
         dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
 
@@ -441,65 +447,37 @@ class TestSet(object):
         # there must be a better sql way to do this ... but my sql-foo is weak
         # we want to overwrite entries if they exist, or insert them if they don't
         
-        # delete the rows which match the selectKeys
-        if False:
-            where = []
-            for key in selectKeys:
-                if isinstance(replacements[key], str):
-                    where.append(key + "='" + replacements[key] + "'")
-                else:
-                    where.append(key + "=" + str(replacements[key]))
-            where = " where " + " and ".join(where)
-
-            cmd = "delete from " + table + " " + where
-
-
+        # insert the new data
+        keys = []
+        values = []
+        for k,v in replacements.items():
+            keys.append(k)
+            values.append(v)
+        values = tuple(values)
+        inlist = " ("+ ",".join(keys) + ") "
+        qmark = " ("+ ",".join("?"*len(values)) + ")"
+        cmd = "replace into "+table+inlist + " values " + qmark
+            
+        #print cmd, values
+        try:
             if not cache:
                 self.connect()
-
-            if not cache:
-                self.curs.execute(cmd)
+                self.curs.execute(cmd, values)
+                if not useApsw:
+                    self.conn.commit()
+                self.close()
             else:
-                self.cacheCurs.execute(cmd)
-
-
-            # insert the new data
-            keys = []
-            values = []
-            for k,v in replacements.items():
-                keys.append(k)
-                values.append(v)
-            values = tuple(values)
-            inlist = " (id, entrytime,"+ ",".join(keys) + ") "
-            qmark = " (NULL, strftime('%s', 'now')," + ",".join("?"*len(values)) + ")"
-            cmd = "insert into "+table+inlist + " values " + qmark
-        else:
-            # insert the new data
-            keys = []
-            values = []
-            for k,v in replacements.items():
-                keys.append(k)
-                values.append(v)
-            values = tuple(values)
-            inlist = " ("+ ",".join(keys) + ") "
-            qmark = " ("+ ",".join("?"*len(values)) + ")"
-            cmd = "replace into "+table+inlist + " values " + qmark
-            
-            #print cmd, values
-            if not cache:
-                self.connect()
-        if not cache:
-            self.curs.execute(cmd, values)
-            if not useApsw:
-                self.conn.commit()
-        else:
-            self.cacheCurs.execute(cmd, values)
-            if not useApsw:
-                self.cacheConn.commit()
-
-        if not cache:
-            self.close()
-            
+                self.cacheConnect()
+                self.cacheCurs.execute(cmd, values)
+                if not useApsw:
+                    self.cacheConn.commit()
+                self.cacheClose()
+                
+        except Exception, e:
+            print "sqlite File:   ", self.dbFile
+            print "sqlite Cmd:    ", cmd
+            print "sqlite Values: ", value
+            raise
 
     def _pureInsert(self, table, replacements, selectKeys, cache=False):
         """Insert entries into a database table, overwrite if they already exist."""
@@ -867,20 +845,29 @@ class TestSet(object):
 
         path = os.path.join(self.wwwDir, filename)
 
+        if os.path.exists(path):
+            os.remove(path)
+                        
+
         if doCopy:
             shutil.copyfile(basename, path)
         else:
             os.symlink(basename, path)
 
+
+        thumbPath = re.sub(".png$", "Thumb.png", path)
+        if os.path.exists(thumbPath):
+            os.remove(thumbPath)
+
         if doConvert:
             convert = which("convert")
             size = "200x200"
             if convert:
-                os.system(convert + " " + path + " -resize "+size+" " + re.sub(".png$", "Thumb.png", path))
+                os.system(convert + " " + path + " -resize "+size+" " + thumbPath)
             else:
-                os.symlink(path, re.sub(".png$", "Thumb.png", path))
+                os.symlink(path, thumbPath)
         else:
-                os.symlink(path, re.sub(".png$", "Thumb.png", path))
+                os.symlink(path, thumbPath)
 
 
         keys = [x.split()[0] for x in self.tables[self.figTable]]
