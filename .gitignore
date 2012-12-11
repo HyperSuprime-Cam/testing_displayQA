@@ -1,13 +1,10 @@
-/python/lsst/testing/displayQA/version.py
-/python/lsst/testing/displayQA/*.pyc
-/python/lsst/testing/displayQA/figures/*.pyc
-/ups/testing_displayQA.cfgc
+*.pyc
+ups/testing_displayQA.cfgc
+python/lsst/testing/displayQA/version.py
 
-# /
-/.sconsign.dblite
-/.sconf_temp
-/config.log
+.sconsign.dblite
+.sconf_temp
+config.log
 
-# /www/
-/www/checkPipetteAllMappers
-/www/test_*
+www/checkPipetteAllMappers
+www/test_*
