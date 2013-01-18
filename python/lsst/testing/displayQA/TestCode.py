@@ -239,6 +239,7 @@ class TestSet(object):
             self.conn = apsw.Connetion(self.dbFile)
         else:
             self.conn = sqlite.connect(self.dbFile)
+
         self.curs = self.conn.cursor()
         return self.curs
 
@@ -459,25 +460,35 @@ class TestSet(object):
         cmd = "replace into "+table+inlist + " values " + qmark
             
         #print cmd, values
-        try:
-            if not cache:
+
+        if not cache:
+            try:
                 self.connect()
                 self.curs.execute(cmd, values)
                 if not useApsw:
                     self.conn.commit()
+            except Exception, e:
+                print "sqlite File:   ", self.dbFile
+                print "sqlite Cmd:    ", cmd
+                print "sqlite Values: ", values
+                raise
+            finally:
                 self.close()
-            else:
+                
+        else:
+            try:
                 self.cacheConnect()
                 self.cacheCurs.execute(cmd, values)
                 if not useApsw:
                     self.cacheConn.commit()
+            except Exception, e:
+                print "sqlite File:   ", self.cacheDbFile
+                print "sqlite Cmd:    ", cmd
+                print "sqlite Values: ", values
+                raise
+            finally:
                 self.cacheClose()
                 
-        except Exception, e:
-            print "sqlite File:   ", self.dbFile
-            print "sqlite Cmd:    ", cmd
-            print "sqlite Values: ", value
-            raise
 
     def _pureInsert(self, table, replacements, selectKeys, cache=False):
         """Insert entries into a database table, overwrite if they already exist."""
