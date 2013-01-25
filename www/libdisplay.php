@@ -84,7 +84,28 @@ function getDefaultTitle() {
 }
 
 function getDefaultH1() {
-    return "Q.A. Test Summary &nbsp;&nbsp; <a href=\"../\"><font size=\"3\">Go to main rerun list.</font></a>";
+    $s = "Q.A. Test Summary &nbsp;&nbsp; <a href=\"../\"><font size=\"3\">Go to main rerun list.</font></a>";
+    return $s . getSummaryLink();
+}
+
+function getSummaryLink() {
+    $uri = getCurrentUriDir();
+
+    # if this is -quick ... link to the main site.
+    # if this is the main site ... link to -quick
+    if (preg_match("/-quick$/", $uri)) {
+        $uri = preg_replace("/-quick$/", "", $uri);
+    } else {
+        $uri .= "-quick";
+    }
+
+    # make sure the other page exists and has a valid db
+    if (file_exists("../$uri/db.sqlite3")) {
+        $s = "&nbsp;&nbsp;&nbsp; <a href=\"../$uri/\"><font size=\"3\">Go to $uri</font></a>";
+    } else {
+        $s = "";
+    }
+    return $s;
 }
 
 function writeImgTag($dir, $filename, $details) {
@@ -972,6 +993,84 @@ function getToggleLinks() {
     
 }
 
+
+function stealSummaryFigures() {
+
+    $group = getGroup();
+    $active = getActive();
+    $allGroups = getGroupList();
+    list($results, $nGrp) = loadCache();
+    $currTest = getDefaultTest();
+
+    # handle possible failure of the cache load
+    $testList = array();
+    if ($results != -1) {
+        foreach ($results as $r) {
+            $testList[] = $r['test'];
+        }
+    } else {
+        $dir = "./";
+        $d = @dir($dir) or dir("");
+        while(false !== ($testDir = $d->read())) {
+            if (preg_match("/test_/", $testDir)) {
+                $testList[] = $testDir;
+            }
+        }
+    }
+
+
+    # pick N tests to
+    $testLabels  = array("Astrom",              "EmptySect",              "psf-ap"              , "PsfShape");
+    $testRegexes = array("Astrometric",         "EmptySector",            "PhotCompare.*.psf-ap", "PsfShape");
+    $testFigures = array("medAstError",         "aa_emptySectorsMat",     "f01mean"             , "medPsfEllip");
+    $allFigs     = array("astromError-all.png", "pointPositions-all.png", "diff_psf-ap-all.png" , "psfEllip-all.png");
+    
+    $nImg = count($testRegexes);
+    $imWidth = intval(600.0/$nImg);
+
+    $tabLabels = array();
+    $figFiles = array();
+    $allFigFiles = array();
+    foreach ($testList as $t) {
+        # find the test dir
+        $tfig = "";
+        $tlab = "";
+        for($i = 0; $i<$nImg; $i++) {
+            $treg = $testRegexes[$i];
+            if (preg_match("/$treg/", $t)) {
+                $tfig = $testFigures[$i];
+                $tlab = $testLabels[$i];
+                $afig = $allFigs[$i];
+            }
+        }
+        if (! $tfig) {
+            continue;
+        }
+        
+        # get the -all.png and .navmap
+        $d = dir($t);
+        
+        while(false !== ($f = $d->read())) {
+            #echo "$f<br/>";
+            if (preg_match("/${tfig}.*\.png/", $f) ) {
+                $href = "summary.php?test=$t&active=$active";
+                $tabLabels[] = $tlab;
+                $figFiles[] = "<a href=\"$href\"><img src=\"$t/${f}\" width='$imWidth'></a>";
+                # get the -all figure
+                $allFigFiles[] = "<a href=\"$href\"><img src=\"$t/$afig\" width='$imWidth'></a>";
+            }            
+        }
+    }
+    
+    ## make a table entry
+    $table = new Table();
+    $table->addHeader($tabLabels);
+    $table->addRow($figFiles);
+    $table->addRow($allFigFiles);
+    
+    return $table->write();
+}
+
 function writeTable_metadata() {
 
     $testDir = getDefaultTest();
@@ -1012,6 +1111,15 @@ function writeTable_metadata() {
     if (strlen($sql) > 10) {
         $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
             "<div id=\"toggleSql\" style=\"display:none\">".$sql."</div>\n";
+        $meta->addRow(array("SQL:", $sqllink));
+    }
+ 
+    # at least say *something* for 'all' data, where the SQL used isn't meaningful
+    # --> Also. script.js expects displaySql and toggleSql ids to exist.
+    if ((strlen($sql) < 10) and ($active == 'all') ) {
+        $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
+            "<div id=\"toggleSql\" style=\"display:none\">SQL queries are per-CCD only.<br/>\n".
+            "('active' is currently set to 'all')</div>\n";
         $meta->addRow(array("SQL:", $sqllink));
     }
     return $meta->write();

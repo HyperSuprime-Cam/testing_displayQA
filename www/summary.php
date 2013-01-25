@@ -20,6 +20,9 @@ if ($db) {
     $page->appendContent(getTestLinksThisGroup('summary')."<br/>");
     $page->appendContent("<h2>".getDefaultTest()."</h2><br/>\n");
     $page->appendContent(getDescription()."<br/>\n");
+    if (preg_match("/SummaryQa/", $testDir)) {
+        $page->appendContent(stealSummaryFigures());
+    }
     $page->appendContent(getToggleLinks()."<br/>\n");
     $mapFigs = writeMappedFigures();
     $figs = writeFigures();
