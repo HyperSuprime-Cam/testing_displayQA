@@ -212,11 +212,21 @@ class TestSet(object):
         thisCurs = self.connect()
 
         # go to each db and dump it
+        statementsToAdd = []
         for db in dbs:
 
             # go through all 'INSERT' statements and execute on outself
-            conn = sqlite.connect(db)
-            for d in conn.iterdump():
+            allStatements = []
+            try:
+                conn = sqlite.connect(db)
+                for d in conn.iterdump():
+                    allStatements.append(d)
+            except Exception, e:
+                print "WARNING: Exception occurred while accessing "+db+ str(e)
+            finally:
+                conn.close()
+                
+            for d in allStatements:
                 if re.search("INSERT INTO", d):
                     # kill the PK so it'll autoincrement
                     d2 = re.sub("VALUES\(\d+,", "VALUES(NULL,", d)
@@ -226,11 +236,17 @@ class TestSet(object):
                         re.search("INTO\s+\""+self.metaTable, d2) or
                         re.search("INTO\s+\""+self.figTable, d2)):
                         d3 = re.sub("INSERT", "REPLACE", d2)
-
-                    thisCurs.execute(d3)
-            conn.close()
-        self.conn.commit()
-        self.close()
+                    statementsToAdd.append(d3)
+                    
+        try:
+            thisCurs = self.connect()
+            for s in statementsToAdd:
+                thisCurs.execute(s)
+            self.conn.commit()
+        except Exception, e:
+            print "WARNING: An error occurred gathering db statements to: "+self.dbFile
+        finally:
+            self.close()
         
 
     def connect(self):
@@ -341,14 +357,19 @@ class TestSet(object):
 
     def _readCounts(self):
         sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
-        self.connect()
 
-        if useApsw:
-            results = self.curs.execute(sql)
-        else:
-            self.curs.execute(sql)
-            results = self.curs.fetchall()
-        self.close()
+        try:
+            self.connect()
+
+            if useApsw:
+                results = self.curs.execute(sql)
+            else:
+                self.curs.execute(sql)
+                results = self.curs.fetchall()
+        except Exception, e:
+            print "WARNING: An error occurred loading results from: "+self.dbFile
+        finally:
+            self.close()
 
         # key: [regex, displaylabel, units, values]
         extras = {
@@ -394,14 +415,18 @@ class TestSet(object):
         
         # get the dataset from the metadata
         sql = "select key,value from metadata"
-        self.connect()
-        if useApsw:
-            metaresults = self.curs.execute(sql)
-        else:
-            self.curs.execute(sql)
-            metaresults = self.curs.fetchall()
-            
-        self.close()
+
+        try:
+            self.connect()
+            if useApsw:
+                metaresults = self.curs.execute(sql)
+            else:
+                self.curs.execute(sql)
+                metaresults = self.curs.fetchall()
+        except Exception, e:
+            print "WARNING: an error occurred loading metadata results from "+self.dbFile
+        finally:
+            self.close()
         
         dataset = "unknown"
         for m in metaresults:
@@ -418,11 +443,11 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        curs = self.cacheConnect()
+        #curs = self.cacheConnect()
         keys = [x.split()[0] for x in self.countKeys]
         replacements = dict( zip(keys, [self.testDir, ntest, npass, dataset, oldest, newest, extras]))
         self._insertOrUpdate(self.countsTable, replacements, ['test'], cache=True)
-        self.cacheClose()
+        #self.cacheClose()
 
 
     def _writeFailure(self, label, value, lo, hi, overwrite=True):
@@ -505,14 +530,25 @@ class TestSet(object):
         cmd = "insert into "+table+inlist + " values " + qmark
 
         if not cache:
-            self.curs.execute(cmd, values)
-            if not useApsw:
-                self.conn.commit()
+            try:
+                self.connect()
+                self.curs.execute(cmd, values)
+                if not useApsw:
+                    self.conn.commit()
+            except Exception, e:
+                print "WARNING: insert failed in "+self.dbFile
+            finally:
+                self.close()
         else:
-            self.cacheCurs.execute(cmd, values)
-            if not useApsw:
-                self.cacheConn.commit()
-
+            try:
+                self.cacheConnect()
+                self.cacheCurs.execute(cmd, values)
+                if not useApsw:
+                    self.cacheConn.commit()
+            except Exception, e:
+                print "WARNING: insert failed in "+self.cacheDbFile
+            finally:
+                self.cacheClose()
 
     def addTests(self, testList):
 
@@ -526,17 +562,21 @@ class TestSet(object):
 
             # load the summary
             sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
-            self.connect()
-            if useApsw:
-                results = self.curs.execute(sql)
-            else:
-                self.curs.execute(sql)
-                results = self.curs.fetchall()
-            self.close()
+            try:
+                self.connect()
+                if useApsw:
+                    results = self.curs.execute(sql)
+                else:
+                    self.curs.execute(sql)
+                    results = self.curs.fetchall()
+            except Exception, e:
+                print "WARNING: an error occurred updating failures in "+self.dbFile
+            finally:
+                self.close()
             
             # write failures
             failSet = []
-            curs = self.cacheConnect()            
+            #curs = self.cacheConnect()            
             for r in results:
                 label, etime, value, lo, hi = r
                 if re.search("-*-", label):
@@ -546,23 +586,27 @@ class TestSet(object):
                     cmp = self._verifyTest(value, lo, hi)
                     if cmp:
                         self._writeFailure(str(label), value, lo, hi, overwrite)
-            self.cacheClose()
+            #self.cacheClose()
 
             failSet = set(failSet)
             
             # load the figures
             sql = "select filename from figure"
-            self.connect()
-            if useApsw:
-                figures = self.curs.execute(sql)
-            else:
-                self.curs.execute(sql)
-                figures = self.curs.fetchall()
-            self.close()
+            try:
+                self.connect()
+                if useApsw:
+                    figures = self.curs.execute(sql)
+                else:
+                    self.curs.execute(sql)
+                    figures = self.curs.fetchall()
+            except Exception, e:
+                print "WARNING: an exception occured loading figures in "+self.dbFile
+            finally:
+                self.close()
 
             # write allfigtable
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
-            curs = self.cacheConnect()
+            #curs = self.cacheConnect()
             for f in figures:
                 filename, = f
                 filebase = re.sub(".png", "", filename)
@@ -579,7 +623,7 @@ class TestSet(object):
                         else:
                             self._pureInsert(self.allFigTable, replacements, ['path'], cache=True)
 
-            self.cacheClose()
+            #self.cacheClose()
     
 
     def updateCounts(self, dataset=None, increment=[0,0]):
@@ -785,11 +829,11 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            curs = self.cacheConnect()
+            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            self.cacheClose()
+            #self.cacheClose()
         
 
             
@@ -827,11 +871,11 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            curs = self.cacheConnect()
+            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            self.cacheClose()
+            #self.cacheClose()
 
 
     def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False, doCopy=True, doConvert=False):
@@ -886,11 +930,11 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            curs = self.cacheConnect()
+            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            self.cacheClose()
+            #self.cacheClose()
 
             
     def importLogs(self, logFiles):
@@ -929,13 +973,17 @@ class TestSet(object):
             keys = self.stdKeys + mykeys
 
             cmd = "create table if not exists " + table + " ("+",".join(keys)+")"
-            self.connect()
-            if useApsw:
-                self.curs.execute(cmd)
-            else:
-                self.curs.execute(cmd)
-                self.conn.commit()
-            self.close()
+            try:
+                self.connect()
+                if useApsw:
+                    self.curs.execute(cmd)
+                else:
+                    self.curs.execute(cmd)
+                    self.conn.commit()
+            except Exception, e:
+                print "WARNING: an error occurred importing eups setup in "+self.dbFile
+            finally:
+                self.close()
 
             for setup in setups:
                 product, version = setup
