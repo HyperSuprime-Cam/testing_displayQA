@@ -1500,11 +1500,18 @@ function summarizeTestsFromCache() {
 
 function summarizeTestByCounting($testDir) {
 
-    $db = connect($testDir);
-    $passCmd = "select * from summary";
-    $prep = $db->prepare($passCmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    $results = array();
+    try {
+        $db = connect($testDir);
+        $passCmd = "select * from summary";
+        if ($db) {
+            $prep = $db->prepare($passCmd);
+            $prep->execute();
+            $results = $prep->fetchAll();
+        }
+    } catch (Exception $e) {
+        echo "Error reading $testDir<br/>";
+    }
     $db = null;
 
     $nTest = 0;
