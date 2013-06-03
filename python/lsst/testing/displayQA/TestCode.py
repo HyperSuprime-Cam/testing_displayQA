@@ -945,22 +945,3 @@ class TestSet(object):
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
 
-            
-    def importLogs(self, logFiles):
-        """Import logs from logFiles output by pipette."""
-        
-        # convert our ascii logfile to a sqlite3 database    
-        def importLog(logFile):
-            base = os.path.basename(logFile)
-            table = "log_" + re.sub(".log", "", base)
-            converter = logConv.LogFileConverter(logFile)
-            converter.writeSqlite3Table(self.dbFile, table)
-
-        # allow a list of filenames to be provided, or just a single filename
-        if isinstance(logFiles, list):
-            for logFile in logFiles:
-                importLog(logFile)
-        else:
-            importLog(logFile)
-
-            
