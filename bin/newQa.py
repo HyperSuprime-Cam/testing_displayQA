@@ -12,7 +12,7 @@
 %prog [options] name
 """
 
-import sys, os, re, glob, shutil
+import sys, os, re, glob, shutil, stat
 import optparse
 
 haveEups = True
@@ -153,6 +153,12 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     with file(envFile, 'a'):
         os.utime(envFile, None)
 
+    # make sure the matplotlib hidden dir is there and is writeable
+    mpldir = os.path.join(wwwRoot, ".matplotlib")
+    if not os.path.exists(mpldir):
+        os.mkdir(mpldir)
+    os.chmod(mpldir, os.stat(mpldir).st_mode | stat.S_IRWXO)
+        
                 
 #############################################################
 # end
