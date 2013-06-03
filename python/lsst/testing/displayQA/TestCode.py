@@ -12,6 +12,7 @@ import sqlite as sqlite
 import errno
 import cPickle as pickle
 import shelve
+import datetime
 
 import LogConverter as logConv
 
@@ -106,7 +107,10 @@ class TestSet(object):
         @param group  A category this testSet belongs to
         """
 
+        self.debugConnect = True
+        
         self.conn = None
+        self.cacheConn = None
         self.sqliteSuffix = sqliteSuffix
         if len(sqliteSuffix) > 0:
             self.sqliteSuffix = "-" + self.sqliteSuffix
@@ -150,10 +154,6 @@ class TestSet(object):
 
 
         # connect to the db and create the tables
-        self.connect()
-        #self.dbFile = os.path.join(self.wwwDir, "db.sqlite3")
-        #self.conn = sqlite.connect(self.dbFile)
-        #self.curs = self.conn.cursor()
         self.summTable, self.figTable, self.metaTable, self.eupsTable = \
                         "summary", "figure", "metadata", "eups"
         self.tables = {
@@ -165,13 +165,18 @@ class TestSet(object):
             }
 
         self.stdKeys = ["id integer primary key autoincrement", "entrytime timestamp DEFAULT (strftime('%s','now'))"]
-        for k, v in self.tables.items():
-            keys = self.stdKeys + v
-            cmd = "create table if not exists " + k + " ("+",".join(keys)+")"
-            self.curs.execute(cmd)
 
-        self.conn.commit()
-        self.close()
+        try:
+            self.connect()
+            for k, v in self.tables.items():
+                keys = self.stdKeys + v
+                cmd = "create table if not exists " + k + " ("+",".join(keys)+")"
+                self.curs.execute(cmd)
+            self.conn.commit()
+        except:
+            print "WARNING: sqlite access error: "+self.dbFile
+        finally:
+            self.close()
 
         
         self.tests = []
@@ -195,9 +200,13 @@ class TestSet(object):
             for k,v in self.cacheTables.items():
                 keys = self.stdKeys + v
                 cmd = "create table if not exists " + k + " ("+",".join(keys)+")"
-                curs = self.cacheConnect()
-                curs.execute(cmd)
-                self.cacheClose()
+                try:
+                    curs = self.cacheConnect()
+                    curs.execute(cmd)
+                except Exception, e:
+                    print "WARNING: Database access error: " + self.cacheDbFile
+                finally:
+                    self.cacheClose()
 
                 
     def __del__(self):
@@ -207,9 +216,6 @@ class TestSet(object):
 
     def accrete(self):
         dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
-
-        # open this database
-        thisCurs = self.connect()
 
         # go to each db and dump it
         statementsToAdd = []
@@ -247,10 +253,28 @@ class TestSet(object):
             print "WARNING: An error occurred gathering db statements to: "+self.dbFile
         finally:
             self.close()
+
+            
+    def _connDebug(self, f, msg):
+
+        backtrace = ""
+        try:
+            raise TestFailError(msg)
+        except TestFailError, e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            backtrace = "".join(traceback.format_stack()[:-2])
+
+        
+        fp = open(f+".debug", 'a')
+        fp.write("%s %s PID%s\n" % (datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"), msg, os.getpid()))
+        fp.write("%s\n" % (backtrace))
+        fp.close()
         
 
     def connect(self):
         self.dbFile = os.path.join(self.wwwDir, "db"+self.sqliteSuffix+".sqlite3")
+        if self.debugConnect:
+            self._connDebug(self.dbFile, "open")
         if useApsw:
             self.conn = apsw.Connetion(self.dbFile)
         else:
@@ -260,12 +284,16 @@ class TestSet(object):
         return self.curs
 
     def close(self):
-        if not self.conn is None:
+        if self.conn:
+            if self.debugConnect:
+                self._connDebug(self.dbFile, "close")
             self.conn.close()
         
 
     def cacheConnect(self):
         self.cacheDbFile = os.path.join(self.wwwBase, "db.sqlite3")
+        if self.debugConnect:
+            self._connDebug(self.cacheDbFile, "open")
         if useApsw:
             self.cacheConn = apsw.Connection(self.cacheDbFile)
         else: 
@@ -274,16 +302,12 @@ class TestSet(object):
         return self.cacheCurs
 
     def cacheClose(self):
-        if not self.cacheConn is None:
+        if self.cacheConn:
+            if self.debugConnect:
+                self._connDebug(self.cacheDbFile, "close")
             self.cacheConn.close()
             
-
         
-    def __del__(self):
-        if not self.conn is None:
-            self.conn.close()
-
-
     #########################################
     # routines to handle caching data
     #########################################
@@ -443,11 +467,9 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        #curs = self.cacheConnect()
         keys = [x.split()[0] for x in self.countKeys]
         replacements = dict( zip(keys, [self.testDir, ntest, npass, dataset, oldest, newest, extras]))
         self._insertOrUpdate(self.countsTable, replacements, ['test'], cache=True)
-        #self.cacheClose()
 
 
     def _writeFailure(self, label, value, lo, hi, overwrite=True):
@@ -456,7 +478,6 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        #curs = self.cacheConnect()
         keys = [x.split()[0] for x in self.failureKeys]
         testandlabel = self.testDir + "QQQ" + str(label)
         replacements = dict( zip(keys, [testandlabel, value, lo, hi]))
@@ -464,7 +485,6 @@ class TestSet(object):
             self._insertOrUpdate(self.failuresTable, replacements, ['testandlabel'], cache=True)
         else:
             self._pureInsert(self.failuresTable, replacements, ['testandlabel'], cache=True)
-        #self.cacheClose()
 
         
     def _insertOrUpdate(self, table, replacements, selectKeys, cache=False):
@@ -484,8 +504,6 @@ class TestSet(object):
         qmark = " ("+ ",".join("?"*len(values)) + ")"
         cmd = "replace into "+table+inlist + " values " + qmark
             
-        #print cmd, values
-
         if not cache:
             try:
                 self.connect()
@@ -576,7 +594,6 @@ class TestSet(object):
             
             # write failures
             failSet = []
-            #curs = self.cacheConnect()            
             for r in results:
                 label, etime, value, lo, hi = r
                 if re.search("-*-", label):
@@ -586,7 +603,6 @@ class TestSet(object):
                     cmp = self._verifyTest(value, lo, hi)
                     if cmp:
                         self._writeFailure(str(label), value, lo, hi, overwrite)
-            #self.cacheClose()
 
             failSet = set(failSet)
             
@@ -606,7 +622,6 @@ class TestSet(object):
 
             # write allfigtable
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
-            #curs = self.cacheConnect()
             for f in figures:
                 filename, = f
                 filebase = re.sub(".png", "", filename)
@@ -615,7 +630,6 @@ class TestSet(object):
                     tag = fileqqq.split("QQQ")[-1]
                     tag = tag.strip()
                     if tag in failSet:
-                        #print filebase
                         path = str(os.path.join(self.wwwDir, filename))
                         replacements = dict( zip(keys, [path, ""]))
                         if overwrite:
@@ -623,7 +637,6 @@ class TestSet(object):
                         else:
                             self._pureInsert(self.allFigTable, replacements, ['path'], cache=True)
 
-            #self.cacheClose()
     
 
     def updateCounts(self, dataset=None, increment=[0,0]):
@@ -666,9 +679,7 @@ class TestSet(object):
         try:
             if not passed:
                 if self.wwwCache:
-                    curs = self.cacheConnect()
                     self._writeFailure(test.label, test.value, test.limits[0], test.limits[1])
-                    self.cacheClose()
                 raise TestFailError("Failed test '"+str(test.label)+"': " +
                                         "value '" + str(test.value) + "' not in range '" +
                                         str(test.limits)+"'.")
@@ -695,8 +706,8 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
+        keys = [x.split()[0] for x in self.tables[self.metaTable]]
         def addOneKvPair(k, v):
-            keys = [x.split()[0] for x in self.tables[self.metaTable]]
             replacements = dict( zip(keys, [k, v]))
             self._insertOrUpdate(self.metaTable, replacements, ['key'])
             
@@ -704,9 +715,13 @@ class TestSet(object):
             kvDict, = args
             for k, v in kvDict.items():
                 addOneKvPair(k, v)
+                #replacements = dict( zip(keys, [k, v]))
+                #self._insertOrUpdate(self.metaTable, replacements, ['key'])
         elif len(args) == 2:
             k, v = args
             addOneKvPair(k, v)
+            #replacements = dict( zip(keys, [k, v]))
+            #self._insertOrUpdate(self.metaTable, replacements, ['key'])
         else:
             raise Exception("Metadata must be either dict (1 arg) or key,value pair (2 args).")
 
@@ -829,11 +844,9 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            #self.cacheClose()
         
 
             
@@ -871,11 +884,9 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            #self.cacheClose()
 
 
     def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False, doCopy=True, doConvert=False):
@@ -930,11 +941,9 @@ class TestSet(object):
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
-            #curs = self.cacheConnect()
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
-            #self.cacheClose()
 
             
     def importLogs(self, logFiles):
