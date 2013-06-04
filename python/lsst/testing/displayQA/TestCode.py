@@ -7,8 +7,6 @@ import inspect
 import stat
 import shutil
 import eups
-import sqlite as sqlite
-#import apsw
 import errno
 import cPickle as pickle
 import shelve
@@ -98,19 +96,198 @@ class Test(object):
             return True
 
 
+
+        
+class DbInterface(object):
+    
+    def __init__(self, dbId):
+        self.dbId = dbId
+        self.dbId.dbname = 'pqa_'+str(self.dbId.dbname)
+
+        self.wwwRoot  = os.getenv("WWW_ROOT")
+        self.wwwRerun = os.getenv("WWW_RERUN")
+        
+    def _connDebug(self, f, msg):
+        backtrace = "".join(traceback.format_stack()[:-2])
+        fp = open(f+".debug", 'a')
+        fp.write("%s %s PID%s\n" % (datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"), msg, os.getpid()))
+        fp.write("%s\n" % (backtrace))
+        fp.close()
+        
+            
+
+        
+class PgsqlInterface(DbInterface):
+    
+    def __init__(self, dbId, **kwargs):
+        """
+        @param dbId  A databaseIdentity object contain connection information
+        """
+        super(PgsqlInterface, self).__init__(dbId)
+        self.db = None
+        self.cursor = None
+
+        self.dbModule = __import__('psycopg2')
+
+        self.debugFile = os.path.join(self.wwwRoot, self.wwwRerun, "debug")
+        if self.debug:
+            self._connDebug(self.debugFile, "open")
+        
+    def connect(self):
+        
+        self.conn = dbModule.connect(
+            host     = self.dbId.dbhost,
+            database = self.dbId.dbname,
+            user     = self.dbId.dbuser,
+            password = self.dbId.dbpwd,
+            port     = self.dbId.dbport
+            )
+        self.cursor = self.conn.cursor()
+        return self.cursor
+
+    
+    def execute(self, sql):
+        """Execute an sql command
+
+        @param sql Command to be executed.
+        """
+
+        if self.cursor:
+            self.cursor.execute(sql)
+            results = self.cursor.fetchall()
+            return results
+        else:
+            raise RuntimeError, "Database is not connected"
+    
+    def close():
+        if self.conn:
+            if self.debug:
+                self._connDebug(self.debugFile, "close")
+            return self.conn.close()
+
+        
+class SqliteInterface(DbInterface):
+    
+    def __init__(self, dbId, **kwargs):
+        super(SqliteInterface, self).__init__(dbId)
+                
+        self.wwwDir = kwargs.get('wwwDir', os.path.join(self.wwwRoot, self.wwwRerun))
+        self.suffix = kwargs.get('suffix', "")        
+        self.debug  = kwargs.get('debug', False)
+        self.dbFile = os.path.join(self.wwwDir, "db"+self.suffix+".sqlite3")
+        self.debugFile = os.path.join(self.wwwDir, "db"+self.suffix+".debug")
+        if self.debug:
+            self._connDebug(self.debugFile, "open")
+
+        self.dbModule = __import__('sqlite')
+
+    def connect(self):
+        self.conn = self.dbModule.connect(self.dbFile)
+        self.cursor = self.conn.cursor()
+        return self.cursor
+        
+    def execute(self, sql, values=None, fetch=False):
+        if values:
+            self.cursor.execute(sql, values)
+        else:
+            self.cursor.execute(sql)
+            
+        if fetch:
+            results = self.cursor.fetchall()
+        else:
+            results = self.conn.commit()
+        return results
+
+    def close(self):
+        if self.conn:
+            if self.debug:
+                self._connDebug(self.debugFile, "close")
+            return self.conn.close()
+
+
+            
+
+class Database(object):
+    """
+    Defaults to a file that looks like:
+    
+    cat ~/.pqa/db-auth.paf
+    database: {
+        authInfo: {
+            host: hsca-01.ipmu.jp
+            user: "XXXX"
+            password: "YYYY"
+            port: 5432
+        }
+    }
+    """
+    def __init__(self, dbname, **kwargs):
+        self.dbname   = dbname
+
+        dbAuthFile = os.path.join(os.environ["HOME"], ".pqa", "db-auth.py")
+        if os.path.exists(dbAuthFile):
+            exec(open(dbAuthFile).read())
+            self.dbuser = user
+            self.dbhost = host
+            self.dbpwd  = password
+            self.dbport = port
+            self.dbsys  = dbsys
+
+        # override policy file with kwargs
+        self.dbuser = kwargs.get("dbuser", self.dbuser)
+        self.dbhost = kwargs.get("dbhost", self.dbhost)
+        self.dbpwd  = kwargs.get("dbpwd",  self.dbpwd)
+        self.dbport = kwargs.get("dbport", self.dbport)
+        self.dbsys  = kwargs.get("dbsys",  self.dbsys)
+
+        options = ["sqlite", "pgsql", "mysql"]
+        if self.dbsys.lower() not in options:
+            raise ValueError, "Database system (dbsys) must be "+", ".join(options)
+
+        if self.dbsys == 'sqlite':
+            self.interface = SqliteInterface(self, **kwargs)
+        if self.dbsys == 'pgsql':
+            self.interface = PgsqlInterface(self, **kwargs)
+
+            
+    def connect(self):
+        return self.interface.connect()
+    def execute(self, *args, **kwargs):
+        return self.interface.execute(*args, **kwargs)
+    def close(self):
+        return self.interface.close()
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
 class TestSet(object):
     """A container for Test objects and associated matplotlib figures."""
     
-    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False, sqliteSuffix=""):
+    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False, sqliteSuffix="", dbname=None):
         """
         @param label  A name for this testSet
         @param group  A category this testSet belongs to
         """
 
         self.debugConnect = True
-        
-        self.conn = None
-        self.cacheConn = None
+         
         self.sqliteSuffix = sqliteSuffix
         if len(sqliteSuffix) > 0:
             self.sqliteSuffix = "-" + self.sqliteSuffix
@@ -154,30 +331,35 @@ class TestSet(object):
 
 
         # connect to the db and create the tables
-        self.summTable, self.figTable, self.metaTable, self.eupsTable = \
-                        "summary", "figure", "metadata", "eups"
+        self.summTable, self.figTable, self.metaTable, self.testdirTable = \
+                        "summary", "figure", "metadata", "testdir"
         self.tables = {
-            self.summTable : ["label text unique", "value double",
+            self.summTable : ["testdirId integer", "label text unique", "value double",
                               "lowerlimit double", "upperlimit double", "comment text",
                               "backtrace text"],
-            self.figTable  : ["filename text unique", "caption text"],
-            self.metaTable : ["key text unique", "value text"],
+            self.figTable  : ["testdirId integer", "filename text unique", "caption text"],
+            self.metaTable : ["testdirId integer", "key text unique", "value text"],
+            self.testdirTable : ["testdir text unique"],
             }
 
         self.stdKeys = ["id integer primary key autoincrement", "entrytime timestamp DEFAULT (strftime('%s','now'))"]
 
-        try:
-            self.connect()
-            for k, v in self.tables.items():
-                keys = self.stdKeys + v
-                cmd = "create table if not exists " + k + " ("+",".join(keys)+")"
-                self.curs.execute(cmd)
-            self.conn.commit()
-        except:
-            print "WARNING: sqlite access error: "+self.dbFile
-        finally:
-            self.close()
+        
+        self.db = Database(dbname, wwwDir=self.wwwDir, suffix=self.sqliteSuffix, debug=self.debugConnect)
+        self.db.connect()
+        for k, v in self.tables.items():
+            keys = self.stdKeys + v
+            cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
+            self.db.execute(cmd)
 
+        # ... and make sure this testdir exists in the db, and get the testDirID
+        sql = "INSERT OR IGNORE INTO testdir (id, entrytime, testdir) VALUES (NULL, strftime('%s', 'now'), '"+\
+            self.testDir+"')"
+        self.db.execute(sql)
+        sql = "SELECT id FROM testdir WHERE testdir = '%s'" % (self.testDir)
+        results = self.db.execute(sql, fetch=True)[0]
+        self.testdirId = results[0]
+        self.db.close()
         
         self.tests = []
 
@@ -196,118 +378,68 @@ class TestSet(object):
             
             self.countKeys = self.cacheTables[self.countsTable]
             self.failureKeys = self.cacheTables[self.failuresTable]
-            
+
+            self.cache = Database(dbname, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
+            self.cache.connect()
             for k,v in self.cacheTables.items():
                 keys = self.stdKeys + v
-                cmd = "create table if not exists " + k + " ("+",".join(keys)+")"
-                try:
-                    curs = self.cacheConnect()
-                    curs.execute(cmd)
-                except Exception, e:
-                    print "WARNING: Database access error: " + self.cacheDbFile
-                finally:
-                    self.cacheClose()
+                cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
+                self.cache.execute(cmd)
+            self.cache.close()
 
+            
                 
     def __del__(self):
-        self.close()
-        self.cacheClose()
+        self.db.close()
+        self.cache.close()
 
 
     def accrete(self):
-        dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
 
-        # go to each db and dump it
-        statementsToAdd = []
-        for db in dbs:
 
-            # go through all 'INSERT' statements and execute on outself
-            allStatements = []
-            try:
-                conn = sqlite.connect(db)
-                for d in conn.iterdump():
-                    allStatements.append(d)
-            except Exception, e:
-                print "WARNING: Exception occurred while accessing "+db+ str(e)
-            finally:
-                conn.close()
-                
-            for d in allStatements:
-                if re.search("INSERT INTO", d):
-                    # kill the PK so it'll autoincrement
-                    d2 = re.sub("VALUES\(\d+,", "VALUES(NULL,", d)
-                    d3 = d2
-                    # if this is the summary table, use REPLACE to handle unique 'label' column
-                    if (re.search("INTO\s+\""+self.summTable, d2) or
-                        re.search("INTO\s+\""+self.metaTable, d2) or
-                        re.search("INTO\s+\""+self.figTable, d2)):
-                        d3 = re.sub("INSERT", "REPLACE", d2)
-                    statementsToAdd.append(d3)
-                    
-        try:
-            thisCurs = self.connect()
+        # for sqlite, we have to combine the per-ccd db.sqlite files into one file
+        if self.db.dbsys == 'sqlite':
+
+            import sqlite
+            
+            dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
+
+            # go to each db and dump it
+            statementsToAdd = []
+            for db in dbs:
+
+                # go through all 'INSERT' statements and execute on outself
+                allStatements = []
+                try:
+                    conn = sqlite.connect(db)
+                    for d in conn.iterdump():
+                        allStatements.append(d)
+                except Exception, e:
+                    print "WARNING: Exception occurred while accessing "+db+ str(e)
+                finally:
+                    conn.close()
+
+                for d in allStatements:
+                    if re.search("INSERT INTO", d):
+                        # kill the PK so it'll autoincrement
+                        d2 = re.sub("VALUES\(\d+,", "VALUES(NULL,", d)
+                        d3 = d2
+                        # if this is the summary table, use REPLACE to handle unique 'label' column
+                        if (re.search("INTO\s+\""+self.summTable, d2) or
+                            re.search("INTO\s+\""+self.metaTable, d2) or
+                            re.search("INTO\s+\""+self.figTable, d2) or
+                            re.search("INTO\s+\""+self.testdirTable, d2)):
+                            d3 = re.sub("INSERT", "REPLACE", d2)
+                        statementsToAdd.append(d3)
+
+            self.db.connect()
             for s in statementsToAdd:
-                thisCurs.execute(s)
-            self.conn.commit()
-        except Exception, e:
-            print "WARNING: An error occurred gathering db statements to: "+self.dbFile
-        finally:
-            self.close()
+                self.db.execute(s)
+            self.db.close()
 
+        
             
-    def _connDebug(self, f, msg):
 
-        backtrace = ""
-        try:
-            raise TestFailError(msg)
-        except TestFailError, e:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            backtrace = "".join(traceback.format_stack()[:-2])
-
-        
-        fp = open(f+".debug", 'a')
-        fp.write("%s %s PID%s\n" % (datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"), msg, os.getpid()))
-        fp.write("%s\n" % (backtrace))
-        fp.close()
-        
-
-    def connect(self):
-        self.dbFile = os.path.join(self.wwwDir, "db"+self.sqliteSuffix+".sqlite3")
-        if self.debugConnect:
-            self._connDebug(self.dbFile, "open")
-        if useApsw:
-            self.conn = apsw.Connetion(self.dbFile)
-        else:
-            self.conn = sqlite.connect(self.dbFile)
-
-        self.curs = self.conn.cursor()
-        return self.curs
-
-    def close(self):
-        if self.conn:
-            if self.debugConnect:
-                self._connDebug(self.dbFile, "close")
-            self.conn.close()
-        
-
-    def cacheConnect(self):
-        self.cacheDbFile = os.path.join(self.wwwBase, "db.sqlite3")
-        if self.debugConnect:
-            self._connDebug(self.cacheDbFile, "open")
-        if useApsw:
-            self.cacheConn = apsw.Connection(self.cacheDbFile)
-        else: 
-            self.cacheConn = sqlite.connect(self.cacheDbFile)
-        self.cacheCurs = self.cacheConn.cursor()
-        return self.cacheCurs
-
-    def cacheClose(self):
-        if self.cacheConn:
-            if self.debugConnect:
-                self._connDebug(self.cacheDbFile, "close")
-            self.cacheConn.close()
-            
-        
     #########################################
     # routines to handle caching data
     #########################################
@@ -383,17 +515,13 @@ class TestSet(object):
         sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
 
         try:
-            self.connect()
-
-            if useApsw:
-                results = self.curs.execute(sql)
-            else:
-                self.curs.execute(sql)
-                results = self.curs.fetchall()
+            self.db.connect()
+            results = self.db.execute(sql, fetch=True)
+            self.db.close()
         except Exception, e:
-            print "WARNING: An error occurred loading results from: "+self.dbFile
+            print "WARNING: An error occurred loading results from: ", str(self.db.dbId)
         finally:
-            self.close()
+            self.db.close()
 
         # key: [regex, displaylabel, units, values]
         extras = {
@@ -441,16 +569,12 @@ class TestSet(object):
         sql = "select key,value from metadata"
 
         try:
-            self.connect()
-            if useApsw:
-                metaresults = self.curs.execute(sql)
-            else:
-                self.curs.execute(sql)
-                metaresults = self.curs.fetchall()
+            self.db.connect()
+            metaresults = self.db.execute(sql, fetch=True)
         except Exception, e:
-            print "WARNING: an error occurred loading metadata results from "+self.dbFile
+            print "WARNING: an error occurred loading metadata results from ", self.db.dbId
         finally:
-            self.close()
+            self.db.close()
         
         dataset = "unknown"
         for m in metaresults:
@@ -505,34 +629,15 @@ class TestSet(object):
         cmd = "replace into "+table+inlist + " values " + qmark
             
         if not cache:
-            try:
-                self.connect()
-                self.curs.execute(cmd, values)
-                if not useApsw:
-                    self.conn.commit()
-            except Exception, e:
-                print "sqlite File:   ", self.dbFile
-                print "sqlite Cmd:    ", cmd
-                print "sqlite Values: ", values
-                raise
-            finally:
-                self.close()
-                
+            self.db.connect()
+            self.db.execute(cmd, values)
+            self.db.close()
         else:
-            try:
-                self.cacheConnect()
-                self.cacheCurs.execute(cmd, values)
-                if not useApsw:
-                    self.cacheConn.commit()
-            except Exception, e:
-                print "sqlite File:   ", self.cacheDbFile
-                print "sqlite Cmd:    ", cmd
-                print "sqlite Values: ", values
-                raise
-            finally:
-                self.cacheClose()
-                
+            self.cache.connect()
+            self.cache.execute(cmd, values)
+            self.cache.close()
 
+            
     def _pureInsert(self, table, replacements, selectKeys, cache=False):
         """Insert entries into a database table, overwrite if they already exist."""
         
@@ -543,33 +648,21 @@ class TestSet(object):
             keys.append(k)
             values.append(v)
         values = tuple(values)
-        inlist = " (id, entrytime,"+ ",".join(keys) + ") "
-        qmark = " (NULL, strftime('%s', 'now')," + ",".join("?"*len(values)) + ")"
-        cmd = "insert into "+table+inlist + " values " + qmark
+        inlist = " (id, entrytime,testdirId,"+ ",".join(keys) + ") "
+        qmark  = " (NULL, strftime('%s', 'now'),'"+self.testdirId + "',".join("?"*len(values)) + ")"
+        cmd    = "insert into "+table+inlist + " values " + qmark
 
         if not cache:
-            try:
-                self.connect()
-                self.curs.execute(cmd, values)
-                if not useApsw:
-                    self.conn.commit()
-            except Exception, e:
-                print "WARNING: insert failed in "+self.dbFile
-            finally:
-                self.close()
+            self.db.connect()
+            self.db.execute(cmd, values)
+            self.db.close()
         else:
-            try:
-                self.cacheConnect()
-                self.cacheCurs.execute(cmd, values)
-                if not useApsw:
-                    self.cacheConn.commit()
-            except Exception, e:
-                print "WARNING: insert failed in "+self.cacheDbFile
-            finally:
-                self.cacheClose()
+            self.cache.connect()
+            self.cache.execute(cmd, values)
+            self.cache.close()
 
+            
     def addTests(self, testList):
-
         for test in testList:
             self.addTest(test)
             
@@ -580,17 +673,9 @@ class TestSet(object):
 
             # load the summary
             sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
-            try:
-                self.connect()
-                if useApsw:
-                    results = self.curs.execute(sql)
-                else:
-                    self.curs.execute(sql)
-                    results = self.curs.fetchall()
-            except Exception, e:
-                print "WARNING: an error occurred updating failures in "+self.dbFile
-            finally:
-                self.close()
+            self.db.connect()
+            results = self.db.execute(sql, fetch=True)
+            self.db.close()
             
             # write failures
             failSet = []
@@ -608,17 +693,9 @@ class TestSet(object):
             
             # load the figures
             sql = "select filename from figure"
-            try:
-                self.connect()
-                if useApsw:
-                    figures = self.curs.execute(sql)
-                else:
-                    self.curs.execute(sql)
-                    figures = self.curs.fetchall()
-            except Exception, e:
-                print "WARNING: an exception occured loading figures in "+self.dbFile
-            finally:
-                self.close()
+            self.db.connect()
+            figures = self.db.execute(sql, fetch=True)
+            self.db.close()
 
             # write allfigtable
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
@@ -681,8 +758,8 @@ class TestSet(object):
                 if self.wwwCache:
                     self._writeFailure(test.label, test.value, test.limits[0], test.limits[1])
                 raise TestFailError("Failed test '"+str(test.label)+"': " +
-                                        "value '" + str(test.value) + "' not in range '" +
-                                        str(test.limits)+"'.")
+                                    "value '" + str(test.value) + "' not in range '" +
+                                    str(test.limits)+"'.")
         except TestFailError, e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             backtrace = "".join(traceback.format_stack()[:-1]) + "\n" + str(e)
@@ -692,7 +769,8 @@ class TestSet(object):
             
         # enter the test in the db
         keys = [x.split()[0] for x in self.tables[self.summTable]]
-        replacements = dict( zip(keys, [test.label, test.value, test.limits[0], test.limits[1], test.comment,
+        replacements = dict( zip(keys, [self.testdirId, test.label, test.value,
+                                        test.limits[0], test.limits[1], test.comment,
                                         backtrace]) )
         self._insertOrUpdate(self.summTable, replacements, ['label'])
 
@@ -708,20 +786,16 @@ class TestSet(object):
 
         keys = [x.split()[0] for x in self.tables[self.metaTable]]
         def addOneKvPair(k, v):
-            replacements = dict( zip(keys, [k, v]))
+            replacements = dict( zip(keys, [self.testdirId, k, v]))
             self._insertOrUpdate(self.metaTable, replacements, ['key'])
             
         if len(args) == 1:
             kvDict, = args
             for k, v in kvDict.items():
                 addOneKvPair(k, v)
-                #replacements = dict( zip(keys, [k, v]))
-                #self._insertOrUpdate(self.metaTable, replacements, ['key'])
         elif len(args) == 2:
             k, v = args
             addOneKvPair(k, v)
-            #replacements = dict( zip(keys, [k, v]))
-            #self._insertOrUpdate(self.metaTable, replacements, ['key'])
         else:
             raise Exception("Metadata must be either dict (1 arg) or key,value pair (2 args).")
 
@@ -840,7 +914,7 @@ class TestSet(object):
 
         
         keys = [x.split()[0] for x in self.tables[self.figTable]]
-        replacements = dict( zip(keys, [filename, caption]))
+        replacements = dict( zip(keys, [self.testdirId,filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
@@ -880,7 +954,7 @@ class TestSet(object):
             fig.savemap(mapPath)
         
         keys = [x.split()[0] for x in self.tables[self.figTable]]
-        replacements = dict( zip(keys, [filename, caption]))
+        replacements = dict( zip(keys, [self.testdirId, filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
@@ -889,7 +963,8 @@ class TestSet(object):
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
 
 
-    def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False, doCopy=True, doConvert=False):
+    def addFigureFile(self, basename, caption, areaLabel=None, toggle=None, navMap=False,
+                      doCopy=True, doConvert=False):
         """Add a figure to this test suite.
         
         @param filename The basename of the figure.
@@ -937,7 +1012,7 @@ class TestSet(object):
 
 
         keys = [x.split()[0] for x in self.tables[self.figTable]]
-        replacements = dict( zip(keys, [filename, caption]))
+        replacements = dict( zip(keys, [self.testdirId, filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename'])
 
         if self.wwwCache:
