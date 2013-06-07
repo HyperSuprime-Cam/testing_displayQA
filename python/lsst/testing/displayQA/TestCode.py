@@ -427,9 +427,11 @@ class TestSet(object):
                         # if this is the summary table, use REPLACE to handle unique 'label' column
                         if (re.search("INTO\s+\""+self.summTable, d2) or
                             re.search("INTO\s+\""+self.metaTable, d2) or
-                            re.search("INTO\s+\""+self.figTable, d2) or
-                            re.search("INTO\s+\""+self.testdirTable, d2)):
+                            re.search("INTO\s+\""+self.figTable, d2)):
                             d3 = re.sub("INSERT", "REPLACE", d2)
+                        if re.search("INTO\s+\""+self.testdirTable, d2):
+                            d3 = re.sub("INSERT", "INSERT OR IGNORE", d2) 
+
                         statementsToAdd.append(d3)
 
             self.db.connect()
