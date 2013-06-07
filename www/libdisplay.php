@@ -669,7 +669,7 @@ function writeTable_ListOfTestResults() {
 
     $db = connect($testDir);
     if (! $db) { return "Unable to query database for $testDir."; }
-    $cmd = "select * from summary order by label";
+    $cmd = "select label, entrytime, lowerlimit, value, upperlimit, comment from summary order by label";
     $prep = $db->prepare($cmd);
     $prep->execute();
     $result = $prep->fetchAll();
@@ -754,7 +754,7 @@ function writeTable_OneTestResult($label) {
     global $dbFile;
     #$mtime = date("Y-m_d H:i:s", filemtime("$testDir/$dbFile"));
     $db = connect($testDir);
-    $cmd = "select * from summary where label = ?";
+    $cmd = "select label, entrytime, lowerlimit, value, upperlimit, comment, backtrace from summary where label = ?";
     $prep = $db->prepare($cmd);
     $prep->execute(array($label));
     $result = $prep->fetchAll();
@@ -800,7 +800,7 @@ function write_OneBacktrace($label) {
     
     global $dbFile;
     $db = connect($testDir);
-    $cmd = "select * from summary where label = ?";
+    $cmd = "select backtrace from summary where label = ?";
     $prep = $db->prepare($cmd);
     $prep->execute(array($label));
     $result = $prep->fetchAll();
@@ -1503,7 +1503,7 @@ function summarizeTestByCounting($testDir) {
     $results = array();
     try {
         $db = connect($testDir);
-        $passCmd = "select * from summary";
+        $passCmd = "select value,lowerlimit,upperlimit,entrytime from summary";
         if ($db) {
             $prep = $db->prepare($passCmd);
             $prep->execute();
