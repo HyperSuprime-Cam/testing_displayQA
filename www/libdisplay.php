@@ -606,9 +606,9 @@ function writeTable_timestamps($group=".*") {
             #if (! preg_match("/^test_$group/", $f)) { continue; }
             
             $db = connect($f);
-            $cmd = "select count(entrytime),min(entrytime),max(entrytime) from summary";
+            $cmd = "select count(s.entrytime),min(s.entrytime),max(s.entrytime) from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ?";
             $prep = $db->prepare($cmd);
-            $prep->execute();
+            $prep->execute(array($f));
             $results = $prep->fetchAll();
             $db = null;
             $result = $results[0];
@@ -669,9 +669,9 @@ function writeTable_ListOfTestResults() {
 
     $db = connect($testDir);
     if (! $db) { return "Unable to query database for $testDir."; }
-    $cmd = "select label, entrytime, lowerlimit, value, upperlimit, comment from summary order by label";
+    $cmd = "select s.label, s.entrytime, s.lowerlimit, s.value, s.upperlimit, s.comment from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? order by label";
     $prep = $db->prepare($cmd);
-    $prep->execute();
+    $prep->execute(array($testDir));
     $result = $prep->fetchAll();
     $db = null;
     
@@ -754,9 +754,9 @@ function writeTable_OneTestResult($label) {
     global $dbFile;
     #$mtime = date("Y-m_d H:i:s", filemtime("$testDir/$dbFile"));
     $db = connect($testDir);
-    $cmd = "select label, entrytime, lowerlimit, value, upperlimit, comment, backtrace from summary where label = ?";
+    $cmd = "select s.label, s.entrytime, s.lowerlimit, s.value, s.upperlimit, s.comment, s.backtrace from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? and label = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute(array($label));
+    $prep->execute(array($testDir, $label));
     $result = $prep->fetchAll();
     $db = null;
     
@@ -800,9 +800,9 @@ function write_OneBacktrace($label) {
     
     global $dbFile;
     $db = connect($testDir);
-    $cmd = "select backtrace from summary where label = ?";
+    $cmd = "select s.backtrace from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? and label = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute(array($label));
+    $prep->execute(array($testDir, $label));
     $result = $prep->fetchAll();
     $db = null;
     
@@ -872,9 +872,9 @@ function writeTable_summarizeMetadata($keys, $group=".*") {
             foreach ($dirs as $testDir) {
                 
                 $db = connect($testDir);
-                $cmd = "select key, value from metadata where key = ?";
+                $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ? and key = ?";
                 $prep = $db->prepare($cmd);
-                $prep->execute(array($key));
+                $prep->execute(array($testDir, $key));
                 $results = $prep->fetchAll();
                 $db = null;
                 
@@ -905,9 +905,9 @@ function getDescription() {
     $active = getActive();
     $db = connect($testDir);
     if ($db) {
-        $cmd = "select key, value from metadata";
+        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute();
+        $prep->execute(array($testDir));
         $results = $prep->fetchAll();
     } else {
         $results = array();
@@ -938,9 +938,9 @@ function getDescription2() {
     }
     $active = getActive();
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
+    $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute();
+    $prep->execute(array($testDir));
     $results = $prep->fetchAll();
     $db = null;
     
@@ -1083,9 +1083,9 @@ function writeTable_metadata() {
     
     $db = connect($testDir);
     if ($db) {
-        $cmd = "select key, value from metadata";
+        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute();
+        $prep->execute(array($testDir));
         $results = $prep->fetchAll();
     } else {
         $results = array();
@@ -1172,9 +1172,9 @@ function writeMappedFigures($suffix="map") {
         
         # get the caption
         $db = connect($testDir);
-        $cmd = "select caption from figure where filename = ?";
+        $cmd = "select f.caption from figure as f, testdir as t where f.testdirId = t.id and f.filename = ? and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute(array($f));
+        $prep->execute(array($f, $testDir));
         $result = $prep->fetchColumn();
         $db = null;
         
@@ -1400,9 +1400,9 @@ function writeFigures() {
     ## get the captions
     $db = connect($testDir);
     if ($db) {
-        $cmd = "select filename, caption from figure";
+        $cmd = "select f.filename, f.caption from figure as f, testdir as t where f.testdirId = t.id and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute();
+        $prep->execute(array($testDir));
         $results = $prep->fetchAll();
     } else {
         $results = array();
@@ -1503,10 +1503,10 @@ function summarizeTestByCounting($testDir) {
     $results = array();
     try {
         $db = connect($testDir);
-        $passCmd = "select value,lowerlimit,upperlimit,entrytime from summary";
+        $passCmd = "select s.value,s.lowerlimit,s.upperlimit,s.entrytime from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ?";
         if ($db) {
             $prep = $db->prepare($passCmd);
-            $prep->execute();
+            $prep->execute(array($testDir));
             $results = $prep->fetchAll();
         }
     } catch (Exception $e) {
@@ -1552,9 +1552,9 @@ function writeQuickLookSummary() {
     foreach ($dirs as $testDir) {        
         
         $db = connect($testDir);
-        $cmd = "select key, value from metadata";
+        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute();
+        $prep->execute(array($testDir));
         $results = $prep->fetchAll();
         $db = null;
 
