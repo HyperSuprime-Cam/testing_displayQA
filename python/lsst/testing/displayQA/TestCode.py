@@ -127,15 +127,32 @@ class PgsqlInterface(DbInterface):
         self.db = None
         self.cursor = None
 
+        self.debug  = kwargs.get('debug', False)
+        
         self.dbModule = __import__('psycopg2')
 
         self.debugFile = os.path.join(self.wwwRoot, self.wwwRerun)
         if self.debug:
             self._connDebug(self.debugFile, "open")
-        
+
+    def int(self, name):
+        return name + " integer"
+    def dec(self, name):
+        return name + " decimal"
+    def text(self, name, n, unique=False):
+        if n < 16:
+            s = name + " char(%d)" % (n)
+        else:
+            s = name + " varchar(%d)" % (n)
+        if unique:
+            s += " unique"
+        return s
+
+    
     def connect(self):
-        
-        self.conn = dbModule.connect(
+
+        print "Connecting: ", self.dbId.dbname
+        self.conn = self.dbModule.connect(
             host     = self.dbId.dbhost,
             database = self.dbId.dbname,
             user     = self.dbId.dbuser,
@@ -146,7 +163,7 @@ class PgsqlInterface(DbInterface):
         return self.cursor
 
     
-    def execute(self, sql):
+    def execute(self, sql, fetch=False):
         """Execute an sql command
 
         @param sql Command to be executed.
@@ -154,12 +171,18 @@ class PgsqlInterface(DbInterface):
 
         if self.cursor:
             self.cursor.execute(sql)
+            if not fetch:
+                self.conn.commit()
+        else:
+            raise RuntimeError, "Database is not connected"
+
+        if fetch:
             results = self.cursor.fetchall()
             return results
         else:
-            raise RuntimeError, "Database is not connected"
-    
-    def close():
+            return 0
+        
+    def close(self):
         if self.conn:
             if self.debug:
                 self._connDebug(self.debugFile, "close")
@@ -181,6 +204,16 @@ class SqliteInterface(DbInterface):
 
         self.dbModule = __import__('sqlite')
 
+    def int(self, name):
+        return name + " integer"
+    def text(self, name, n, unique=False):
+        s = name + " text"
+        if unique:
+            s += " unique"
+        return s
+    def dec(self, name):
+        return name + " double"
+        
     def connect(self):
         self.conn = self.dbModule.connect(self.dbFile)
         self.cursor = self.conn.cursor()
@@ -280,7 +313,7 @@ class Database(object):
 class TestSet(object):
     """A container for Test objects and associated matplotlib figures."""
     
-    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False, sqliteSuffix="", dbname=None):
+    def __init__(self, label=None, group="", clean=False, useCache=False, alias=None, wwwCache=False, sqliteSuffix=""):
         """
         @param label  A name for this testSet
         @param group  A category this testSet belongs to
@@ -325,38 +358,58 @@ class TestSet(object):
             try:
                 os.mkdir(self.wwwDir)
                 os.chmod(self.wwwDir, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
-            except os.error, e:  # as exc: # Python >2.5
+            except os.error, e:  # as exc: # Python >2.5 
                 if e.errno != errno.EEXIST:
                     raise
 
+
+        self.db = Database(qaRerun, wwwDir=self.wwwDir, suffix=self.sqliteSuffix, debug=self.debugConnect)
+        self.interface = self.db.interface
+        self.db.connect()
+
+        i = self.interface.int
+        s = self.interface.text
+        d = self.interface.dec
 
         # connect to the db and create the tables
         self.summTable, self.figTable, self.metaTable, self.testdirTable = \
                         "summary", "figure", "metadata", "testdir"
         self.tables = {
-            self.summTable : ["testdirId integer", "label text unique", "value double",
-                              "lowerlimit double", "upperlimit double", "comment text",
-                              "backtrace text"],
-            self.figTable  : ["testdirId integer", "filename text unique", "caption text"],
-            self.metaTable : ["testdirId integer", "key text unique", "value text"],
-            self.testdirTable : ["testdir text unique"],
+            self.summTable : [i("testdirId"), s("label", 40, unique=True), d("value"),
+                              d("lowerlimit"), d("upperlimit"), s("comment", 120),
+                              s("backtrace", 120)],
+            self.figTable  : [i("testdirId"), s("filename", 100, unique=True), s("caption", 120)],
+            self.metaTable : [i("testdirId"), s("key", 40, unique=True), s("value", 60)],
+            self.testdirTable : [s("testdir", 40, unique=True)],
             }
 
-        self.stdKeys = ["id integer primary key autoincrement", "entrytime timestamp DEFAULT (strftime('%s','now'))"]
-
+        self.stdKeys = {
+            'sqlite':
+                ["id integer primary key autoincrement",
+                 "entrytime timestamp DEFAULT (strftime('%s','now'))"],
+            'pgsql':
+                ["id SERIAL",
+                 "entrytime timestamp DEFAULT (timestamp 'now')"],
+            }
         
-        self.db = Database(dbname, wwwDir=self.wwwDir, suffix=self.sqliteSuffix, debug=self.debugConnect)
-        self.db.connect()
         for k, v in self.tables.items():
-            keys = self.stdKeys + v
-            cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
-            self.db.execute(cmd)
+            keys = self.stdKeys[self.db.dbsys] + v
+            sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
+            print sql
+            self.db.execute(sql)
 
         # ... and make sure this testdir exists in the db, and get the testDirID
-        sql = "INSERT OR IGNORE INTO testdir (id, entrytime, testdir) VALUES (NULL, strftime('%s', 'now'), '"+\
+        if self.db.dbsys == 'sqlite':
+            sql = "INSERT OR IGNORE INTO testdir (id, entrytime, testdir) VALUES (NULL, strftime('%s', 'now'), '"+\
             self.testDir+"')"
+            
+        elif self.db.dbsys == 'pgsql':
+            sql = "INSERT INTO testdir (entrytime, testdir) select timestamp 'now', '"+\
+                self.testDir+"' where not exists (select testdir from testdir where testdir = '%s') "% (self.testDir)
+            
         self.db.execute(sql)
         sql = "SELECT id FROM testdir WHERE testdir = '%s'" % (self.testDir)
+        print sql
         results = self.db.execute(sql, fetch=True)[0]
         self.testdirId = results[0]
         self.db.close()
@@ -379,10 +432,10 @@ class TestSet(object):
             self.countKeys = self.cacheTables[self.countsTable]
             self.failureKeys = self.cacheTables[self.failuresTable]
 
-            self.cache = Database(dbname, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
+            self.cache = Database(qaRun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
             self.cache.connect()
             for k,v in self.cacheTables.items():
-                keys = self.stdKeys + v
+                keys = self.stdKeys[self.db.dbsys] + v
                 cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
                 self.cache.execute(cmd)
             self.cache.close()
