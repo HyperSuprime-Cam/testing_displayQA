@@ -129,7 +129,7 @@ class PgsqlInterface(DbInterface):
 
         self.dbModule = __import__('psycopg2')
 
-        self.debugFile = os.path.join(self.wwwRoot, self.wwwRerun, "debug")
+        self.debugFile = os.path.join(self.wwwRoot, self.wwwRerun)
         if self.debug:
             self._connDebug(self.debugFile, "open")
         
@@ -175,7 +175,7 @@ class SqliteInterface(DbInterface):
         self.suffix = kwargs.get('suffix', "")        
         self.debug  = kwargs.get('debug', False)
         self.dbFile = os.path.join(self.wwwDir, "db"+self.suffix+".sqlite3")
-        self.debugFile = os.path.join(self.wwwDir, "db"+self.suffix+".debug")
+        self.debugFile = os.path.join(self.wwwDir, "db"+self.suffix)
         if self.debug:
             self._connDebug(self.debugFile, "open")
 
