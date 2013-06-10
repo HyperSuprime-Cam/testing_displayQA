@@ -633,8 +633,12 @@ function writeTable_timestamps($group=".*") {
     $table = new Table("width=\"80%\"");
     $table->addHeader(array("Oldest Entry", "Most Recent Entry"));
     $now = time();
-    $oldest = date("Y-m-d H:i:s", $min);
-    $latest = date("Y-m-d H:i:s", $max);
+    $oldest = $min;
+    $latest = $max;
+    if (! is_string($min)) {
+        $oldest = date("Y-m-d H:i:s", $min);
+        $latest = date("Y-m-d H:i:s", $max);
+    }
 
     if ($now - $max < 120) {
         $latest .= "<br/><font color=\"#880000\">(< 2m ago, testing in progress)</font>";
@@ -713,7 +717,10 @@ function writeTable_ListOfTestResults() {
         $thisLabel = $labelWords[count($labelWords)-1]; # this might just break ...
         $test .= ", <a href=\"summary.php?test=$testDir&active=$thisLabel\">Active</a>";
 
-        $mtime = date("Y-m-d H:i:s", $r['entrytime']);
+        $mtime = $r['entrytime'];
+        if (!is_string($mtime)) {
+            $mtime = date("Y-m-d H:i:s", $r['entrytime']);
+        }
 
         $loStr = $lo ? sprintf("%.4f", $lo) : "None";
         $hiStr = $hi ? sprintf("%.4f", $hi) : "None";
@@ -1641,7 +1648,10 @@ function writeTable_SummarizeAllTests() {
             $lastUpdate = $summ['newest'];
         }
         if ($lastUpdate  > 0) {
-            $timestampStr = date("Y-m-d H:i:s", $lastUpdate);
+            $timestampStr = $lastUpdate;
+            if (!is_string($lastUpdate)) {
+                $timestampStr = date("Y-m-d H:i:s", $lastUpdate);
+            }
         } else {
             $timestampStr = "n/a";
         }
@@ -1670,10 +1680,13 @@ function loadCache() {
     if ($alreadyLoaded) {
         return array($results2, $nGroup);
     } else {
-        if (!file_exists("db.sqlite3")) {
+        
+        $db = connect(".");
+
+        if (is_null($db)) {
             return array(-1, -1);
         }
-        $db = connect("."); #$testDir);
+        
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         try {
             $testCmd = "select * from counts order by test;";
@@ -2042,7 +2055,10 @@ function writeTable_SummarizeAllGroups() {
             #$failRate = tfColor(sprintf("%.3f", $failRate), ($failRate == 0.0));
         }
         if ($lastUpdate > 0) {
-            $timestampStr = date("Y-m-d H:i", $lastUpdate);
+            $timestampStr = $lastUpdate;
+            if (! is_string($lastUpdate)) {
+                $timestampStr = date("Y-m-d H:i", $lastUpdate);
+            }
         } else {
             $timestampStr = "n/a";
         }

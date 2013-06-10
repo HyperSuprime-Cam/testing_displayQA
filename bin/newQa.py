@@ -205,6 +205,8 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     with file(envFile, 'a'):
         os.utime(envFile, None)
 
+        
+    #########################################
     # make sure the matplotlib hidden dir is there and is writeable
     mpldir = os.path.join(wwwRoot, ".matplotlib")
     if not os.path.exists(mpldir):
@@ -212,6 +214,18 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     os.chmod(mpldir, os.stat(mpldir).st_mode | stat.S_IRWXO)
         
 
+    #########################################
+    # generate a dbconfig.php file
+    dbConfFile = os.path.join(dest, "dbconfig.php")
+    with open(dbConfFile, 'w') as dbFp:
+        dbFp.write("<?php\n")
+        dbFp.write("$host = '"+host+"';\n")
+        dbFp.write("$port = '"+port+"';\n")
+        dbFp.write("$user = '"+user+"';\n")
+        dbFp.write("$password = '"+password+"';\n")
+        dbFp.write("$dbsys = '"+dbsys+"';\n")
+        dbFp.write("$dbname = '"+pqaDb+"';\n")
+        
         
 #############################################################
 # end

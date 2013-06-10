@@ -151,7 +151,8 @@ class PgsqlInterface(DbInterface):
     
     def connect(self):
 
-        print "Connecting: ", self.dbId.dbname
+        if self.debug:
+            self._connDebug(self.debugFile, "connect")
         self.conn = self.dbModule.connect(
             host     = self.dbId.dbhost,
             database = self.dbId.dbname,
@@ -163,14 +164,17 @@ class PgsqlInterface(DbInterface):
         return self.cursor
 
     
-    def execute(self, sql, fetch=False):
+    def execute(self, sql, values=None, fetch=False):
         """Execute an sql command
 
         @param sql Command to be executed.
         """
 
         if self.cursor:
-            self.cursor.execute(sql)
+            if values is None:
+                self.cursor.execute(sql)
+            else:
+                self.cursor.execute(sql, values)
             if not fetch:
                 self.conn.commit()
         else:
@@ -319,7 +323,7 @@ class TestSet(object):
         @param group  A category this testSet belongs to
         """
 
-        self.debugConnect = True
+        self.debugConnect = False
          
         self.sqliteSuffix = sqliteSuffix
         if len(sqliteSuffix) > 0:
@@ -367,6 +371,7 @@ class TestSet(object):
         self.interface = self.db.interface
         self.db.connect()
 
+        # very short abbreviations for creating db-appropriate variable definitions
         i = self.interface.int
         s = self.interface.text
         d = self.interface.dec
@@ -375,12 +380,12 @@ class TestSet(object):
         self.summTable, self.figTable, self.metaTable, self.testdirTable = \
                         "summary", "figure", "metadata", "testdir"
         self.tables = {
-            self.summTable : [i("testdirId"), s("label", 40, unique=True), d("value"),
-                              d("lowerlimit"), d("upperlimit"), s("comment", 120),
-                              s("backtrace", 120)],
-            self.figTable  : [i("testdirId"), s("filename", 100, unique=True), s("caption", 120)],
-            self.metaTable : [i("testdirId"), s("key", 40, unique=True), s("value", 60)],
-            self.testdirTable : [s("testdir", 40, unique=True)],
+            self.summTable : [i("testdirId"), s("label", 80), d("value"),
+                              d("lowerlimit"), d("upperlimit"), s("comment", 160),
+                              s("backtrace", 480)],
+            self.figTable  : [i("testdirId"), s("filename", 80, unique=True), s("caption", 160)],
+            self.metaTable : [i("testdirId"), s("key", 80), s("value", 2048)],
+            self.testdirTable : [s("testdir", 160, unique=True)],
             }
 
         self.stdKeys = {
@@ -389,13 +394,12 @@ class TestSet(object):
                  "entrytime timestamp DEFAULT (strftime('%s','now'))"],
             'pgsql':
                 ["id SERIAL",
-                 "entrytime timestamp DEFAULT (timestamp 'now')"],
+                 "entrytime bigint DEFAULT date_part('epoch', now())"],
             }
         
         for k, v in self.tables.items():
             keys = self.stdKeys[self.db.dbsys] + v
             sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
-            print sql
             self.db.execute(sql)
 
         # ... and make sure this testdir exists in the db, and get the testDirID
@@ -404,12 +408,11 @@ class TestSet(object):
             self.testDir+"')"
             
         elif self.db.dbsys == 'pgsql':
-            sql = "INSERT INTO testdir (entrytime, testdir) select timestamp 'now', '"+\
-                self.testDir+"' where not exists (select testdir from testdir where testdir = '%s') "% (self.testDir)
+            sql = "INSERT INTO testdir (entrytime, testdir) SELECT date_part('epoch', now()), '"+\
+                self.testDir+"' WHERE NOT EXISTS (SELECT testdir FROM testdir WHERE testdir = '%s') "% (self.testDir)
             
         self.db.execute(sql)
         sql = "SELECT id FROM testdir WHERE testdir = '%s'" % (self.testDir)
-        print sql
         results = self.db.execute(sql, fetch=True)[0]
         self.testdirId = results[0]
         self.db.close()
@@ -418,21 +421,24 @@ class TestSet(object):
 
         # create the cache table
         if self.wwwCache:
+            self.cache = Database(qaRerun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
+            # same abbreviations as definied above will work
+            # i = int, s = str/text, d = double/float
+            
             self.countsTable = "counts"
             self.failuresTable = "failures"
             self.allFigTable = "allfigures"
             self.cacheTables = {
-                self.countsTable : ["test text unique", "ntest integer", "npass integer", "dataset text",
-                                   "oldest timestamp", "newest timestamp", "extras text"],
-                self.failuresTable : ["testandlabel text unique", "value double",
-                                      "lowerlimit double", "upperlimit double", "comment text"],
-                self.allFigTable : ["path text unique", "caption text"],
+                self.countsTable : [s("test", 80, unique=True), i("ntest"), i("npass"), s("dataset", 80),
+                                    "oldest bigint", "newest bigint", s("extras", 160)],
+                self.failuresTable : [s("testandlabel", 160, unique=True), d("value"),
+                                      d("lowerlimit"), d("upperlimit"), s("comment", 160)],
+                self.allFigTable : [s("path", 160, unique=True), s("caption", 160)],
                 }
             
             self.countKeys = self.cacheTables[self.countsTable]
             self.failureKeys = self.cacheTables[self.failuresTable]
 
-            self.cache = Database(qaRun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
             self.cache.connect()
             for k,v in self.cacheTables.items():
                 keys = self.stdKeys[self.db.dbsys] + v
@@ -444,7 +450,8 @@ class TestSet(object):
                 
     def __del__(self):
         self.db.close()
-        self.cache.close()
+        if self.wwwCache:
+            self.cache.close()
 
 
     def accrete(self):
@@ -617,7 +624,8 @@ class TestSet(object):
         extraValues = []
         for k,v in extras.items():
             if len(v[3]) > 0:
-                extraValues.append("%s:%.2f:%.2f:%s" % (v[1], numpy.mean(v[3]), numpy.std(v[3]), v[2]))
+                v3list = map(float, v[3])
+                extraValues.append("%s:%.2f:%.2f:%s" % (v[1], numpy.mean(v3list), numpy.std(v3list), v[2]))
         extraStr = ",".join(extraValues)
         
         # get the dataset from the metadata
@@ -671,6 +679,10 @@ class TestSet(object):
         
         # there must be a better sql way to do this ... but my sql-foo is weak
         # we want to overwrite entries if they exist, or insert them if they don't
+
+        qmarkChar = "?"
+        if self.db.dbsys == 'pgsql':
+            qmarkChar = "%s"
         
         # insert the new data
         keys = []
@@ -680,16 +692,43 @@ class TestSet(object):
             values.append(v)
         values = tuple(values)
         inlist = " ("+ ",".join(keys) + ") "
-        qmark = " ("+ ",".join("?"*len(values)) + ")"
-        cmd = "replace into "+table+inlist + " values " + qmark
+        qmark = ",".join([qmarkChar]*len(values))
+        qmarkB = " ("+ qmark + ") "
+
+        whereComponents = []
+        for s in selectKeys:
+            sval = str(replacements[s])
+            # add quotes if it's a string
+            if isinstance(replacements[s], str):
+                sval = "'%s'" % (sval)
+            whereComponents.append(s + " = " + sval)
+        whereStatement = " AND ".join(whereComponents)
+            
+        allvalues = values[:]
+        if self.db.dbsys == 'sqlite':
+            cmd = "REPLACE INTO "+table+inlist + " VALUES " + qmarkB # + " WHERE " + whereStatement
+
+            
+        if self.db.dbsys == 'pgsql':
+            #UPDATE table SET field='C', field2='Z' WHERE id=3;
+            #INSERT INTO table (id, field, field2)
+            #SELECT 3, 'C', 'Z'
+            #WHERE NOT EXISTS (SELECT 1 FROM table WHERE id=3);
+
+            update = "UPDATE " + table + " SET " + inlist + " = " + qmarkB + \
+                " WHERE " + whereStatement + ";"
+            insert = "INSERT INTO " + table + inlist + " SELECT " + qmark + \
+                " WHERE NOT EXISTS (SELECT 1 FROM " + table + " WHERE "+whereStatement+");";
+            cmd = update + insert
+            allvalues = values + values
             
         if not cache:
             self.db.connect()
-            self.db.execute(cmd, values)
+            self.db.execute(cmd, allvalues)
             self.db.close()
         else:
             self.cache.connect()
-            self.cache.execute(cmd, values)
+            self.cache.execute(cmd, allvalues)
             self.cache.close()
 
             
@@ -817,7 +856,14 @@ class TestSet(object):
                                     str(test.limits)+"'.")
         except TestFailError, e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            backtrace = "".join(traceback.format_stack()[:-1]) + "\n" + str(e)
+            
+            # ignore the final line (it's this addTest() call)
+            btList = traceback.format_stack()[:-1]
+            # keep only the final two lines (the test which failed)
+            if len(btList) > 2:
+                btList = btList[-2:]
+            backtrace = "".join(btList) + "\n" + str(e)
+
             
         if kwargs.has_key('backtrace'):
             backtrace = kwargs['backtrace']
@@ -827,7 +873,7 @@ class TestSet(object):
         replacements = dict( zip(keys, [self.testdirId, test.label, test.value,
                                         test.limits[0], test.limits[1], test.comment,
                                         backtrace]) )
-        self._insertOrUpdate(self.summTable, replacements, ['label'])
+        self._insertOrUpdate(self.summTable, replacements, ['label', 'testdirId'])
 
         self.updateCounts() #increment=[1, npassed])
 
@@ -842,7 +888,7 @@ class TestSet(object):
         keys = [x.split()[0] for x in self.tables[self.metaTable]]
         def addOneKvPair(k, v):
             replacements = dict( zip(keys, [self.testdirId, k, v]))
-            self._insertOrUpdate(self.metaTable, replacements, ['key'])
+            self._insertOrUpdate(self.metaTable, replacements, ['key', 'testdirId'])
             
         if len(args) == 1:
             kvDict, = args
@@ -863,7 +909,7 @@ class TestSet(object):
         for key in keys:
             tablekeys = [x.split()[0] for x in self.tables[self.summTable]]
             replacements = dict( zip(tablekeys, [key, 0, 1, 1, "Uncaught exception", exceptDict[key]]) )
-            self._insertOrUpdate(self.summTable, replacements, ['label'])
+            self._insertOrUpdate(self.summTable, replacements, ['label', 'testdirId'])
 
             
     def _writeWrapperScript(self, pymodule, figname, plotargs, pythonpath=""):
@@ -970,7 +1016,7 @@ class TestSet(object):
         
         keys = [x.split()[0] for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId,filename, caption]))
-        self._insertOrUpdate(self.figTable, replacements, ['filename'])
+        self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
@@ -1010,7 +1056,7 @@ class TestSet(object):
         
         keys = [x.split()[0] for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId, filename, caption]))
-        self._insertOrUpdate(self.figTable, replacements, ['filename'])
+        self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
@@ -1068,7 +1114,7 @@ class TestSet(object):
 
         keys = [x.split()[0] for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId, filename, caption]))
-        self._insertOrUpdate(self.figTable, replacements, ['filename'])
+        self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
             keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
