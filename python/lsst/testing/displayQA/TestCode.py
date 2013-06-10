@@ -97,6 +97,40 @@ class Test(object):
 
 
 
+
+class DbField(object):
+    def __init__(self, name, typ, **kwargs):
+        self.name = name
+        self.typ  = typ
+        self.size = kwargs.get('size', None)
+        self.uniq = kwargs.get('uniq', False)
+        
+    
+class SqliteField(DbField):
+    def __init__(self, name, typ, **kwargs):
+        super(SqliteField, self).__init__(name, typ, **kwargs)
+        self.lookup = {"i": 'integer', 's' : 'text', 'd' : 'double', 'b' : 'integer'}
+    def __str__(self):
+        s = self.name + " " + self.lookup[self.typ]
+        if self.uniq:
+            s += " unique"
+        return s
+
+    
+class PgsqlField(DbField):
+    def __init__(self, name, typ, **kwargs):
+        super(PgsqlField, self).__init__(name, typ, **kwargs)
+        self.lookup = {"i": 'integer', 's' : 'varchar', 'd' : 'decimal', 'b' : 'bigint'}
+    def __str__(self):
+        s = self.name + " " + self.lookup[self.typ]
+        if self.size:
+            s += "(%d)" % (self.size)
+        if self.uniq:
+            s += " unique"
+        return s
+        
+        
+        
         
 class DbInterface(object):
     
@@ -136,17 +170,13 @@ class PgsqlInterface(DbInterface):
             self._connDebug(self.debugFile, "open")
 
     def int(self, name):
-        return name + " integer"
+        return PgsqlField(name, 'i')
+    def bigint(self, name):
+        return PgsqlField(name, 'b')
     def dec(self, name):
-        return name + " decimal"
-    def text(self, name, n, unique=False):
-        if n < 16:
-            s = name + " char(%d)" % (n)
-        else:
-            s = name + " varchar(%d)" % (n)
-        if unique:
-            s += " unique"
-        return s
+        return PgsqlField(name, 'd')
+    def text(self, name, n, uniq=False):
+        return PgsqlField(name, 's', size=n, uniq=uniq)
 
     
     def connect(self):
@@ -208,15 +238,16 @@ class SqliteInterface(DbInterface):
 
         self.dbModule = __import__('sqlite')
 
+
     def int(self, name):
-        return name + " integer"
-    def text(self, name, n, unique=False):
-        s = name + " text"
-        if unique:
-            s += " unique"
-        return s
+        return SqliteField(name, 'i')
+    def bigint(self, name):
+        return SqliteField(name, 'b')
     def dec(self, name):
-        return name + " double"
+        return SqliteField(name, 'd')
+    def text(self, name, n, uniq=False):
+        return SqliteField(name, 's', size=n, uniq=uniq)
+        
         
     def connect(self):
         self.conn = self.dbModule.connect(self.dbFile)
@@ -373,6 +404,7 @@ class TestSet(object):
 
         # very short abbreviations for creating db-appropriate variable definitions
         i = self.interface.int
+        I = self.interface.bigint
         s = self.interface.text
         d = self.interface.dec
 
@@ -383,9 +415,9 @@ class TestSet(object):
             self.summTable : [i("testdirId"), s("label", 80), d("value"),
                               d("lowerlimit"), d("upperlimit"), s("comment", 160),
                               s("backtrace", 480)],
-            self.figTable  : [i("testdirId"), s("filename", 80, unique=True), s("caption", 160)],
+            self.figTable  : [i("testdirId"), s("filename", 80, uniq=True), s("caption", 160)],
             self.metaTable : [i("testdirId"), s("key", 80), s("value", 2048)],
-            self.testdirTable : [s("testdir", 160, unique=True)],
+            self.testdirTable : [s("testdir", 160, uniq=True)],
             }
 
         self.stdKeys = {
@@ -398,7 +430,7 @@ class TestSet(object):
             }
         
         for k, v in self.tables.items():
-            keys = self.stdKeys[self.db.dbsys] + v
+            keys = map(str, self.stdKeys[self.db.dbsys] + v)
             sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
             self.db.execute(sql)
 
@@ -429,11 +461,11 @@ class TestSet(object):
             self.failuresTable = "failures"
             self.allFigTable = "allfigures"
             self.cacheTables = {
-                self.countsTable : [s("test", 80, unique=True), i("ntest"), i("npass"), s("dataset", 80),
-                                    "oldest bigint", "newest bigint", s("extras", 160)],
-                self.failuresTable : [s("testandlabel", 160, unique=True), d("value"),
+                self.countsTable : [s("test", 80, uniq=True), i("ntest"), i("npass"), s("dataset", 80),
+                                    I("oldest"), I("newest"), s("extras", 160)],
+                self.failuresTable : [s("testandlabel", 160, uniq=True), d("value"),
                                       d("lowerlimit"), d("upperlimit"), s("comment", 160)],
-                self.allFigTable : [s("path", 160, unique=True), s("caption", 160)],
+                self.allFigTable : [s("path", 160, uniq=True), s("caption", 160)],
                 }
             
             self.countKeys = self.cacheTables[self.countsTable]
@@ -441,7 +473,7 @@ class TestSet(object):
 
             self.cache.connect()
             for k,v in self.cacheTables.items():
-                keys = self.stdKeys[self.db.dbsys] + v
+                keys = map(str, self.stdKeys[self.db.dbsys] + v)
                 cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
                 self.cache.execute(cmd)
             self.cache.close()
@@ -574,7 +606,8 @@ class TestSet(object):
 
 
     def _readCounts(self):
-        sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
+        sql = "SELECT s.label,s.entrytime,s.value,s.lowerlimit,s.upperlimit FROM summary as s, testdir as t"\
+            " WHERE s.testdirId = t.id and t.testdir = '%s'" % (self.testDir)
 
         try:
             self.db.connect()
@@ -654,7 +687,7 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        keys = [x.split()[0] for x in self.countKeys]
+        keys = [x.name for x in self.countKeys]
         replacements = dict( zip(keys, [self.testDir, ntest, npass, dataset, oldest, newest, extras]))
         self._insertOrUpdate(self.countsTable, replacements, ['test'], cache=True)
 
@@ -665,7 +698,7 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        keys = [x.split()[0] for x in self.failureKeys]
+        keys = [x.name for x in self.failureKeys]
         testandlabel = self.testDir + "QQQ" + str(label)
         replacements = dict( zip(keys, [testandlabel, value, lo, hi]))
         if overwrite:
@@ -792,7 +825,7 @@ class TestSet(object):
             self.db.close()
 
             # write allfigtable
-            keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
+            keys = [x.name for x in self.cacheTables[self.allFigTable]]
             for f in figures:
                 filename, = f
                 filebase = re.sub(".png", "", filename)
@@ -869,7 +902,7 @@ class TestSet(object):
             backtrace = kwargs['backtrace']
             
         # enter the test in the db
-        keys = [x.split()[0] for x in self.tables[self.summTable]]
+        keys = [x.name for x in self.tables[self.summTable]]
         replacements = dict( zip(keys, [self.testdirId, test.label, test.value,
                                         test.limits[0], test.limits[1], test.comment,
                                         backtrace]) )
@@ -885,7 +918,7 @@ class TestSet(object):
         @param *args A dict of key,value pairs, or a key and value
         """
 
-        keys = [x.split()[0] for x in self.tables[self.metaTable]]
+        keys = [x.name for x in self.tables[self.metaTable]]
         def addOneKvPair(k, v):
             replacements = dict( zip(keys, [self.testdirId, k, v]))
             self._insertOrUpdate(self.metaTable, replacements, ['key', 'testdirId'])
@@ -907,7 +940,7 @@ class TestSet(object):
 
         keys = sorted(exceptDict.keys())
         for key in keys:
-            tablekeys = [x.split()[0] for x in self.tables[self.summTable]]
+            tablekeys = [x.name for x in self.tables[self.summTable]]
             replacements = dict( zip(tablekeys, [key, 0, 1, 1, "Uncaught exception", exceptDict[key]]) )
             self._insertOrUpdate(self.summTable, replacements, ['label', 'testdirId'])
 
@@ -1014,12 +1047,12 @@ class TestSet(object):
         self._writeWrapperScript(pymodule, filename, plotargs, pythonpath)
 
         
-        keys = [x.split()[0] for x in self.tables[self.figTable]]
+        keys = [x.name for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId,filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
-            keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
+            keys = [x.name for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
         
@@ -1054,12 +1087,12 @@ class TestSet(object):
             mapPath = re.sub("\.\w{3}$", suffix, path)
             fig.savemap(mapPath)
         
-        keys = [x.split()[0] for x in self.tables[self.figTable]]
+        keys = [x.name for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId, filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
-            keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
+            keys = [x.name for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
 
@@ -1112,12 +1145,12 @@ class TestSet(object):
                 os.symlink(path, thumbPath)
 
 
-        keys = [x.split()[0] for x in self.tables[self.figTable]]
+        keys = [x.name for x in self.tables[self.figTable]]
         replacements = dict( zip(keys, [self.testdirId, filename, caption]))
         self._insertOrUpdate(self.figTable, replacements, ['filename', 'testdirId'])
 
         if self.wwwCache:
-            keys = [x.split()[0] for x in self.cacheTables[self.allFigTable]]
+            keys = [x.name for x in self.cacheTables[self.allFigTable]]
             replacements = dict( zip(keys, [path, caption]))
             self._insertOrUpdate(self.allFigTable, replacements, ['path'], cache=True)
 
