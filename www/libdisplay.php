@@ -665,7 +665,7 @@ function writeTable_ListOfTestResults() {
 
     $headAttribs = array("align=\"center\"");
     $table->addHeader(
-        array("Label", "Timestamp", "Value", "Limits", "Comment"),
+        array("No.", "Label", "Timestamp", "Value", "Limits", "Comment"),
         $headAttribs
         );
 
@@ -679,7 +679,8 @@ function writeTable_ListOfTestResults() {
     $result = $prep->fetchAll();
     $db = null;
     
-    $tdAttribs = array("align=\"left\"", "align=\"center\"",
+    $tdAttribs = array("align=\"left\"",
+                       "align=\"left\"", "align=\"center\"",
                        "align=\"right\" width=\"50\"", "align=\"center\"",
                        "align=\"left\" width=\"200\"");
 
@@ -697,6 +698,7 @@ function writeTable_ListOfTestResults() {
         }
     }
     $result = array_merge($failed, $passed);
+    $i = 1;
     foreach ($result as $r) {
         list($test, $lo, $value, $hi, $comment) =
             array($r['label'], $r['lowerlimit'], $r['value'], $r['upperlimit'], $r['comment']);
@@ -725,8 +727,9 @@ function writeTable_ListOfTestResults() {
         $loStr = $lo ? sprintf("%.4f", $lo) : "None";
         $hiStr = $hi ? sprintf("%.4f", $hi) : "None";
 
-        $table->addRow(array($test, $mtime,
+        $table->addRow(array($i, $test, $mtime,
                              hiLoColor($value, $lo, $hi), "[$loStr, $hiStr]", $comment), $tdAttribs);
+        $i += 1;
     }
 
     return $table->write();
