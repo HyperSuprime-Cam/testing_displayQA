@@ -731,23 +731,22 @@ class TestSet(object):
         whereComponents = []
         for s in selectKeys:
             sval = str(replacements[s])
-            # add quotes if it's a string
-            if isinstance(replacements[s], str):
+            # add quotes if it's a string or label (which might be a visit [int])
+            if isinstance(replacements[s], str) or s == 'label':
                 sval = "'%s'" % (sval)
             whereComponents.append(s + " = " + sval)
         whereStatement = " AND ".join(whereComponents)
             
         allvalues = values[:]
         if self.db.dbsys == 'sqlite':
-            cmd = "REPLACE INTO "+table+inlist + " VALUES " + qmarkB # + " WHERE " + whereStatement
+            cmd = "REPLACE INTO "+table+inlist + " VALUES " + qmarkB
 
             
         if self.db.dbsys == 'pgsql':
-            #UPDATE table SET field='C', field2='Z' WHERE id=3;
-            #INSERT INTO table (id, field, field2)
-            #SELECT 3, 'C', 'Z'
-            #WHERE NOT EXISTS (SELECT 1 FROM table WHERE id=3);
-
+            # this is a mildly sleezy upsert.  pgsql has no upsert (replace into...)
+            # so, do ...
+            # ... an UPDATE which succeeds if there, and fails silently
+            # ... an INSERT which succeeds if not there, and fails silently
             update = "UPDATE " + table + " SET " + inlist + " = " + qmarkB + \
                 " WHERE " + whereStatement + ";"
             insert = "INSERT INTO " + table + inlist + " SELECT " + qmark + \
