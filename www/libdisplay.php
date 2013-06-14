@@ -882,7 +882,7 @@ function writeTable_summarizeMetadata($keys, $group=".*") {
             foreach ($dirs as $testDir) {
                 
                 $db = connect($testDir);
-                $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ? and key = ?";
+                $cmd = "select distinct m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ? and key = ?";
                 $prep = $db->prepare($cmd);
                 $prep->execute(array($testDir, $key));
                 $results = $prep->fetchAll();
@@ -1093,7 +1093,7 @@ function writeTable_metadata() {
     
     $db = connect($testDir);
     if ($db) {
-        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
+        $cmd = "select distinct m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
         $prep = $db->prepare($cmd);
         $prep->execute(array($testDir));
         $results = $prep->fetchAll();
@@ -1114,7 +1114,9 @@ function writeTable_metadata() {
             }
             continue;
         }        
-
+        if ($active == 'all' && preg_match("/$active/", $r['value'])) {
+            continue;
+        }
         $meta->addRow(array($r['key'].":", $r['value']));
     }
     $meta->addRow(array("Active:", $active));
