@@ -262,7 +262,8 @@ class SqliteInterface(DbInterface):
         self.cursor = self.conn.cursor()
         return self.cursor
         
-    def execute(self, sql, values=None, fetch=False):
+    def execute(self, sql, values=None, fetch=False, lock_table=None):
+        # sqlite doesn't need to lock
         if values:
             self.cursor.execute(sql, values)
         else:
@@ -467,7 +468,7 @@ class TestSet(object):
             sql = "INSERT INTO testdir (entrytime, testdir) SELECT date_part('epoch', now()), '"+\
                 self.testDir+"' WHERE NOT EXISTS (SELECT testdir FROM testdir WHERE testdir = '%s'); "% (self.testDir)
             
-        self.db.execute(sql)
+        self.db.execute(sql, lock_table='testdir')
         sql = "SELECT id FROM testdir WHERE testdir = '%s';" % (self.testDir)
         results = self.db.execute(sql, fetch=True)[0]
         self.testdirId = results[0]
@@ -476,6 +477,7 @@ class TestSet(object):
         self.tests = []
 
         # create the cache table
+        self.cache = None
         if self.wwwCache:
             self.cache = Database(qaRerun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
             # same abbreviations as definied above will work
@@ -518,7 +520,7 @@ class TestSet(object):
                 
     def __del__(self):
         self.db.close()
-        if self.wwwCache:
+        if self.wwwCache and (self.cache is not None):
             self.cache.close()
 
 
