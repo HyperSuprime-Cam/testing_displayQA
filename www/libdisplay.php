@@ -2079,6 +2079,9 @@ function writeTable_SummarizeAllGroups() {
 
         # see if this is a special group
         foreach ($specialGroups as $sg => $arr) {
+            if (preg_match("/^\.\*$/", $sg) && $group === "") {
+                continue;
+            }
             if (preg_match("/$sg/", $group)) {
                 if (count($arr) == 0) {
                     $arr = array(0, 0, 0, 0, 0);
