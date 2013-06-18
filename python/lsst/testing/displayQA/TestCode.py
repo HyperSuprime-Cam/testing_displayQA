@@ -301,6 +301,13 @@ class Database(object):
     def __init__(self, dbname, **kwargs):
         self.dbname   = dbname
 
+        # defaults
+        self.dbuser = None
+        self.dbhost = None
+        self.dbpwd  = None
+        self.dbport = None
+        self.dbsys  = 'sqlite'
+        
         dbAuthFile = os.path.join(os.environ["HOME"], ".pqa", "db-auth.py")
         if os.path.exists(dbAuthFile):
             exec(open(dbAuthFile).read())
@@ -644,18 +651,30 @@ class TestSet(object):
 
 
     def _readCounts(self):
+
+        # get the dataset from the metadata
+        sql_meta = "select key,value from metadata"
+        
         sql = "SELECT s.label,s.entrytime,s.value,s.lowerlimit,s.upperlimit FROM summary as s, testdir as t"\
             " WHERE s.testdirId = t.id and t.testdir = '%s'" % (self.testDir)
-
+        
         try:
             self.db.connect()
-            results = self.db.execute(sql, fetch=True)
-            self.db.close()
+            results     = self.db.execute(sql, fetch=True, lock_table='summary')
+            metaresults = self.db.execute(sql_meta, fetch=True)
         except Exception, e:
             print "WARNING: An error occurred loading results from: ", str(self.db.dbId)
         finally:
             self.db.close()
 
+
+        dataset = "unknown"
+        for m in metaresults:
+            k, v = m
+            if k == 'dataset':
+                dataset = v
+
+            
         # key: [regex, displaylabel, units, values]
         extras = {
             'fwhm' : [".*fwhm.*",                    "fwhm",            "[&Prime;] (FWHM)",           []],
@@ -699,22 +718,6 @@ class TestSet(object):
                 extraValues.append("%s:%.2f:%.2f:%s" % (v[1], numpy.mean(v3list), numpy.std(v3list), v[2]))
         extraStr = ",".join(extraValues)
         
-        # get the dataset from the metadata
-        sql = "select key,value from metadata"
-
-        try:
-            self.db.connect()
-            metaresults = self.db.execute(sql, fetch=True)
-        except Exception, e:
-            print "WARNING: an error occurred loading metadata results from ", self.db.dbId
-        finally:
-            self.db.close()
-        
-        dataset = "unknown"
-        for m in metaresults:
-            k, v = m
-            if k == 'dataset':
-                dataset = v
         
         return ntest, npass, dataset, oldest, newest, extraStr
 
@@ -794,7 +797,7 @@ class TestSet(object):
             
         if not cache:
             self.db.connect()
-            self.db.execute(cmd, allvalues)
+            self.db.execute(cmd, allvalues, lock_table=table)
             self.db.close()
         else:
             
