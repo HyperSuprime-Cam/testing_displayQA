@@ -37,15 +37,15 @@ function tfColor($string, $tf) {
 function verifyTest($value, $lo, $hi) {
     
     $cmp = 0; #true;  # default true (ie. no limits were set)
-    if ($lo and $hi) {
+    if (!is_null($lo) and !is_null($hi)) {
         if ($value < $lo) {
             $cmp = -1;
         } elseif ($value > $hi) {
             $cmp = 1;
         }
-    } elseif ($lo and !$hi and ($value < $lo)) {
+    } elseif (!is_null($lo) and is_null($hi) and ($value < $lo)) {
         $cmp = -1;
-    } elseif (!$lo and $hi and ($value > $hi)) {
+    } elseif (is_null($lo) and !is_null($hi) and ($value > $hi)) {
         $cmp = 1;
     }
     return $cmp;
