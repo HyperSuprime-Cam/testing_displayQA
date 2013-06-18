@@ -194,12 +194,20 @@ class PgsqlInterface(DbInterface):
         return self.cursor
 
     
-    def execute(self, sql, values=None, fetch=False):
+    def execute(self, sql, values=None, fetch=False, lock_table=None):
         """Execute an sql command
 
         @param sql Command to be executed.
         """
 
+
+        sql2 = sql
+        if lock_table:
+            sql2  = "BEGIN WORK;"
+            sql2 += "LOCK TABLE "+lock_table+" IN ACCESS SHARE MODE;"
+            sql2 += sql
+            sql2 += "COMMIT WORK;"
+        
         if self.cursor:
             if values is None:
                 self.cursor.execute(sql)
@@ -431,20 +439,36 @@ class TestSet(object):
         
         for k, v in self.tables.items():
             keys = map(str, self.stdKeys[self.db.dbsys] + v)
-            sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
-            self.db.execute(sql)
 
+            
+            sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+");"
+            if self.db.dbsys == 'sqlite':
+                self.db.execute(sql)
+                
+            # pgsql can't do concurrent 'create table' ... race condition
+            elif self.db.dbsys == 'pgsql':
+                threw = False
+                try:
+                    self.db.execute(sql)
+                except self.interface.dbModule.IntegrityError, e:
+                    threw = True
+                if threw:
+                    self.db.close()
+                    self.db.connect()
+
+                    
+                
         # ... and make sure this testdir exists in the db, and get the testDirID
         if self.db.dbsys == 'sqlite':
             sql = "INSERT OR IGNORE INTO testdir (id, entrytime, testdir) VALUES (NULL, strftime('%s', 'now'), '"+\
-            self.testDir+"')"
+            self.testDir+"');"
             
         elif self.db.dbsys == 'pgsql':
             sql = "INSERT INTO testdir (entrytime, testdir) SELECT date_part('epoch', now()), '"+\
-                self.testDir+"' WHERE NOT EXISTS (SELECT testdir FROM testdir WHERE testdir = '%s') "% (self.testDir)
+                self.testDir+"' WHERE NOT EXISTS (SELECT testdir FROM testdir WHERE testdir = '%s'); "% (self.testDir)
             
         self.db.execute(sql)
-        sql = "SELECT id FROM testdir WHERE testdir = '%s'" % (self.testDir)
+        sql = "SELECT id FROM testdir WHERE testdir = '%s';" % (self.testDir)
         results = self.db.execute(sql, fetch=True)[0]
         self.testdirId = results[0]
         self.db.close()
@@ -474,8 +498,20 @@ class TestSet(object):
             self.cache.connect()
             for k,v in self.cacheTables.items():
                 keys = map(str, self.stdKeys[self.db.dbsys] + v)
-                cmd = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+")"
-                self.cache.execute(cmd)
+                sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+");"
+                if self.db.dbsys == 'sqlite':
+                    self.cache.execute(sql)
+                elif self.db.dbsys == 'pgsql':
+                    threw = False
+                    try:
+                        self.cache.execute(sql)
+                    except self.interface.dbModule.IntegrityError, e:
+                        threw = True
+                    if threw:
+                        self.cache.close()
+                        self.cache.connect()
+
+                        
             self.cache.close()
 
             
@@ -759,11 +795,35 @@ class TestSet(object):
             self.db.execute(cmd, allvalues)
             self.db.close()
         else:
-            self.cache.connect()
-            self.cache.execute(cmd, allvalues)
-            self.cache.close()
-
             
+            if self.db.dbsys == 'sqlite':
+                self.cache.connect()
+                self.cache.execute(cmd, allvalues)
+                self.cache.close()
+
+            # race condition can occur here
+            if self.db.dbsys == 'pgsql':
+                i = 10
+                while i > 0:
+                    threw = False
+                    self.cache.connect()
+                    try:
+                        self.cache.execute(cmd, allvalues, lock_table=table)
+                    except self.interface.dbModule.IntegrityError, e:
+                        threw = True
+                    self.cache.close()
+
+                    # try again (otherwise, our counts will be off in the cache)
+                    if threw:
+                        i -= 1
+                        print "WARNING: Failed cache write.  Trying again."
+                        print "SQL>"+cmd
+                    # ... or we're ok
+                    else:
+                        break
+                        
+            
+                    
     def _pureInsert(self, table, replacements, selectKeys, cache=False):
         """Insert entries into a database table, overwrite if they already exist."""
         
@@ -775,7 +835,7 @@ class TestSet(object):
             values.append(v)
         values = tuple(values)
         inlist = " (id, entrytime,testdirId,"+ ",".join(keys) + ") "
-        qmark  = " (NULL, strftime('%s', 'now'),'"+self.testdirId + "',".join("?"*len(values)) + ")"
+        qmark  = " (NULL, strftime('%s', 'now'),'"+self.testdirId + "',".join("?"*len(values)) + ");"
         cmd    = "insert into "+table+inlist + " values " + qmark
 
         if not cache:
@@ -798,7 +858,7 @@ class TestSet(object):
         if self.wwwCache:
 
             # load the summary
-            sql = "select label,entrytime,value,lowerlimit,upperlimit from summary"
+            sql = "select label,entrytime,value,lowerlimit,upperlimit from summary;"
             self.db.connect()
             results = self.db.execute(sql, fetch=True)
             self.db.close()
@@ -818,7 +878,7 @@ class TestSet(object):
             failSet = set(failSet)
             
             # load the figures
-            sql = "select filename from figure"
+            sql = "select filename from figure;"
             self.db.connect()
             figures = self.db.execute(sql, fetch=True)
             self.db.close()
