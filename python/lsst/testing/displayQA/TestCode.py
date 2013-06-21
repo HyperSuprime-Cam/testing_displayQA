@@ -120,11 +120,9 @@ class SqliteField(DbField):
 class PgsqlField(DbField):
     def __init__(self, name, typ, **kwargs):
         super(PgsqlField, self).__init__(name, typ, **kwargs)
-        self.lookup = {"i": 'integer', 's' : 'varchar', 'd' : 'decimal', 'b' : 'bigint'}
+        self.lookup = {"i": 'integer', 's' : 'text', 'd' : 'decimal', 'b' : 'bigint'}
     def __str__(self):
         s = self.name + " " + self.lookup[self.typ]
-        if self.size:
-            s += "(%d)" % (self.size)
         if self.uniq:
             s += " unique"
         return s
