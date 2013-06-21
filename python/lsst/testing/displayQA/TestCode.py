@@ -429,7 +429,7 @@ class TestSet(object):
             self.summTable : [i("testdirId"), s("label", 80), d("value"),
                               d("lowerlimit"), d("upperlimit"), s("comment", 160),
                               s("backtrace", 480)],
-            self.figTable  : [i("testdirId"), s("filename", 80, uniq=True), s("caption", 160)],
+            self.figTable  : [i("testdirId"), s("filename", 80), s("caption", 160)],
             self.metaTable : [i("testdirId"), s("key", 80), s("value", 2048)],
             self.testdirTable : [s("testdir", 160, uniq=True)],
             }
