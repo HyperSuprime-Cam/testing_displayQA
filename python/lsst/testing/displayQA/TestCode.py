@@ -436,10 +436,10 @@ class TestSet(object):
 
         self.stdKeys = {
             'sqlite':
-                ["id integer primary key autoincrement",
+                ["id integer PRIMARY KEY AUTOINCREMENT",
                  "entrytime timestamp DEFAULT (strftime('%s','now'))"],
             'pgsql':
-                ["id SERIAL",
+                 ["id SERIAL PRIMARY KEY",
                  "entrytime bigint DEFAULT date_part('epoch', now())"],
             }
         
