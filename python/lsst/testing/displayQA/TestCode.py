@@ -431,7 +431,7 @@ class TestSet(object):
                               s("backtrace", 480)],
             self.figTable  : [i("testdirId"), s("filename", 80), s("caption", 160)],
             self.metaTable : [i("testdirId"), s("key", 80), s("value", 2048)],
-            self.testdirTable : [s("testdir", 160, uniq=True)],
+            self.testdirTable : [s("testdir", 160)], #, uniq=True)],
             }
 
         self.stdKeys = {
