@@ -12,7 +12,6 @@ import cPickle as pickle
 import shelve
 import datetime
 
-import LogConverter as logConv
 
 import numpy
 BAD_VALUE = -99
@@ -185,27 +184,15 @@ class PgsqlInterface(DbInterface):
             host     = self.dbId.dbhost,
             database = self.dbId.dbname,
             user     = self.dbId.dbuser,
-            password = self.dbId.dbpwd,
+            password = self.dbId.dbpasswd,
             port     = self.dbId.dbport
             )
         self.cursor = self.conn.cursor()
         return self.cursor
 
-    
-    def execute(self, sql, values=None, fetch=False, lock_table=None):
-        """Execute an sql command
 
-        @param sql Command to be executed.
-        """
+    def _execute(self, sql, values=None, fetch=False):
 
-
-        sql2 = sql
-        if lock_table:
-            sql2  = "BEGIN WORK;"
-            sql2 += "LOCK TABLE "+lock_table+" IN ACCESS SHARE MODE;"
-            sql2 += sql
-            sql2 += "COMMIT WORK;"
-        
         if self.cursor:
             if values is None:
                 self.cursor.execute(sql)
@@ -214,13 +201,48 @@ class PgsqlInterface(DbInterface):
             if not fetch:
                 self.conn.commit()
         else:
-            raise RuntimeError, "Database is not connected"
+            raise RuntimeError("Database is not connected")
 
         if fetch:
             results = self.cursor.fetchall()
             return results
         else:
-            return 0
+            return [0]
+        
+            
+    def execute(self, sql, values=None, fetch=False, lock_table=None, safe=False):
+        """Execute an sql command
+
+        @param sql Command to be executed.
+        """
+
+        # if we're commiting and insert, let's lock the table to avoid
+        # conflicts with other threads
+        if lock_table and not fetch:
+            sql2  = "BEGIN WORK;"
+            sql2 += "LOCK TABLE "+lock_table+" IN ACCESS SHARE MODE;"
+            # handle a missing semicolon
+            scolon = ";" if sql.strip()[-1] != ';' else ''
+            sql2 += sql + scolon
+            sql2 += "COMMIT WORK;"
+            sql = sql2
+
+            
+        result = None
+        if not safe:
+            result = self._execute(sql, values=values, fetch=fetch)
+        else:
+            threw = False
+            try:
+                result = self._execute(sql, values=values, fetch=fetch)
+            except self.dbModule.IntegrityError, e:
+                threw = True
+            if threw:
+                self.close()
+                self.connect()
+
+        return result
+    
         
     def close(self):
         if self.conn:
@@ -260,8 +282,8 @@ class SqliteInterface(DbInterface):
         self.cursor = self.conn.cursor()
         return self.cursor
         
-    def execute(self, sql, values=None, fetch=False, lock_table=None):
-        # sqlite doesn't need to lock
+    def execute(self, sql, values=None, fetch=False, lock_table=None, safe=False):
+        # sqlite doesn't need to lock or a try/except (safe)
         if values:
             self.cursor.execute(sql, values)
         else:
@@ -280,84 +302,47 @@ class SqliteInterface(DbInterface):
             return self.conn.close()
 
 
-            
 
-class Database(object):
-    """
-    Defaults to a file that looks like:
-    
-    cat ~/.pqa/db-auth.paf
-    database: {
-        authInfo: {
-            host: hsca-01.ipmu.jp
-            user: "XXXX"
-            password: "YYYY"
-            port: 5432
-        }
-    }
-    """
+
+        
+class DatabaseId(object):
+
     def __init__(self, dbname, **kwargs):
-        self.dbname   = dbname
 
-        # defaults
-        self.dbuser = None
-        self.dbhost = None
-        self.dbpwd  = None
-        self.dbport = None
-        self.dbsys  = 'sqlite'
+        self.dbname = dbname
         
         dbAuthFile = os.path.join(os.environ["HOME"], ".pqa", "db-auth.py")
         if os.path.exists(dbAuthFile):
             exec(open(dbAuthFile).read())
-            self.dbuser = user
-            self.dbhost = host
-            self.dbpwd  = password
-            self.dbport = port
-            self.dbsys  = dbsys
+            self.dbuser    = user
+            self.dbhost    = host
+            self.dbpasswd  = password
+            self.dbport    = port
+            self.dbsys     = dbsys
 
-        # override policy file with kwargs
-        self.dbuser = kwargs.get("dbuser", self.dbuser)
-        self.dbhost = kwargs.get("dbhost", self.dbhost)
-        self.dbpwd  = kwargs.get("dbpwd",  self.dbpwd)
-        self.dbport = kwargs.get("dbport", self.dbport)
-        self.dbsys  = kwargs.get("dbsys",  self.dbsys)
+        # override with kwargs dbhost,dbuser, etc  if kwarg value is not None
+        #self.__dict__.update({k:v for k,v in kwargs.iteritems() if v and k in self.__dict__})
+        
 
-        options = ["sqlite", "pgsql", "mysql"]
-        if self.dbsys.lower() not in options:
-            raise ValueError, "Database system (dbsys) must be "+", ".join(options)
+        
+def makeInterface(dbname, **kwargs):
 
-        if self.dbsys == 'sqlite':
-            self.interface = SqliteInterface(self, **kwargs)
-        if self.dbsys == 'pgsql':
-            self.interface = PgsqlInterface(self, **kwargs)
+    dbId = DatabaseId(dbname)
+        
+    options = ["sqlite", "pgsql", "mysql"]
+    if dbId.dbsys.lower() not in options:
+        raise ValueError, "Database system (dbsys) must be "+", ".join(options)
 
-            
-    def connect(self):
-        return self.interface.connect()
-    def execute(self, *args, **kwargs):
-        return self.interface.execute(*args, **kwargs)
-    def close(self):
-        return self.interface.close()
-            
+    interfaces = {
+        'sqlite' : SqliteInterface,
+        'pgsql'  : PgsqlInterface,
+        #'mysql'  : MysqlInterface,
+        }
+    
+    return interfaces[dbId.dbsys](dbId, **kwargs)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
         
 class TestSet(object):
     """A container for Test objects and associated matplotlib figures."""
@@ -412,15 +397,14 @@ class TestSet(object):
                     raise
 
 
-        self.db = Database(qaRerun, wwwDir=self.wwwDir, suffix=self.sqliteSuffix, debug=self.debugConnect)
-        self.interface = self.db.interface
+        self.db = makeInterface(qaRerun, wwwDir=self.wwwDir, suffix=self.sqliteSuffix, debug=self.debugConnect)
         self.db.connect()
 
-        # very short abbreviations for creating db-appropriate variable definitions
-        i = self.interface.int
-        I = self.interface.bigint
-        s = self.interface.text
-        d = self.interface.dec
+        # very short abbreviations for creating db-appropriate field definitions
+        i = self.db.int
+        I = self.db.bigint
+        s = self.db.text
+        d = self.db.dec
 
         # connect to the db and create the tables
         self.summTable, self.figTable, self.metaTable, self.testdirTable = \
@@ -444,32 +428,18 @@ class TestSet(object):
             }
         
         for k, v in self.tables.items():
-            keys = map(str, self.stdKeys[self.db.dbsys] + v)
+            keys = map(str, self.stdKeys[self.db.dbId.dbsys] + v)
+            sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+");"
+            self.db.execute(sql, safe=True)
+                                    
 
             
-            sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+");"
-            if self.db.dbsys == 'sqlite':
-                self.db.execute(sql)
-                
-            # pgsql can't do concurrent 'create table' ... race condition
-            elif self.db.dbsys == 'pgsql':
-                threw = False
-                try:
-                    self.db.execute(sql)
-                except self.interface.dbModule.IntegrityError, e:
-                    threw = True
-                if threw:
-                    self.db.close()
-                    self.db.connect()
-
-                    
-                
         # ... and make sure this testdir exists in the db, and get the testDirID
-        if self.db.dbsys == 'sqlite':
+        if self.db.dbId.dbsys == 'sqlite':
             sql = "INSERT OR IGNORE INTO testdir (id, entrytime, testdir) VALUES (NULL, strftime('%s', 'now'), '"+\
             self.testDir+"');"
             
-        elif self.db.dbsys == 'pgsql':
+        elif self.db.dbId.dbsys == 'pgsql':
             sql = "INSERT INTO testdir (entrytime, testdir) SELECT date_part('epoch', now()), '"+\
                 self.testDir+"' WHERE NOT EXISTS (SELECT testdir FROM testdir WHERE testdir = '%s'); "% (self.testDir)
             
@@ -484,7 +454,7 @@ class TestSet(object):
         # create the cache table
         self.cache = None
         if self.wwwCache:
-            self.cache = Database(qaRerun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
+            self.cache = makeInterface(qaRerun, wwwDir=self.wwwBase, suffix="", debug=self.debugConnect)
             # same abbreviations as definied above will work
             # i = int, s = str/text, d = double/float
             
@@ -504,20 +474,9 @@ class TestSet(object):
 
             self.cache.connect()
             for k,v in self.cacheTables.items():
-                keys = map(str, self.stdKeys[self.db.dbsys] + v)
+                keys = map(str, self.stdKeys[self.db.dbId.dbsys] + v)
                 sql = "CREATE TABLE IF NOT EXISTS " + k + " ("+",".join(keys)+");"
-                if self.db.dbsys == 'sqlite':
-                    self.cache.execute(sql)
-                elif self.db.dbsys == 'pgsql':
-                    threw = False
-                    try:
-                        self.cache.execute(sql)
-                    except self.interface.dbModule.IntegrityError, e:
-                        threw = True
-                    if threw:
-                        self.cache.close()
-                        self.cache.connect()
-
+                self.cache.execute(sql, safe=True)
                         
             self.cache.close()
 
@@ -533,7 +492,7 @@ class TestSet(object):
 
 
         # for sqlite, we have to combine the per-ccd db.sqlite files into one file
-        if self.db.dbsys == 'sqlite':
+        if self.db.dbId.dbsys == 'sqlite':
 
             import sqlite
             
@@ -651,10 +610,10 @@ class TestSet(object):
     def _readCounts(self):
 
         # get the dataset from the metadata
-        sql_meta = "select key,value from metadata"
+        sql_meta = "select key,value from metadata;"
         
         sql = "SELECT s.label,s.entrytime,s.value,s.lowerlimit,s.upperlimit FROM summary as s, testdir as t"\
-            " WHERE s.testdirId = t.id and t.testdir = '%s'" % (self.testDir)
+            " WHERE s.testdirId = t.id and t.testdir = '%s';" % (self.testDir)
         
         try:
             self.db.connect()
@@ -662,6 +621,7 @@ class TestSet(object):
             metaresults = self.db.execute(sql_meta, fetch=True)
         except Exception, e:
             print "WARNING: An error occurred loading results from: ", str(self.db.dbId)
+            print e
         finally:
             self.db.close()
 
@@ -753,7 +713,7 @@ class TestSet(object):
         # we want to overwrite entries if they exist, or insert them if they don't
 
         qmarkChar = "?"
-        if self.db.dbsys == 'pgsql':
+        if self.db.dbId.dbsys == 'pgsql':
             qmarkChar = "%s"
         
         # insert the new data
@@ -777,11 +737,11 @@ class TestSet(object):
         whereStatement = " AND ".join(whereComponents)
             
         allvalues = values[:]
-        if self.db.dbsys == 'sqlite':
+        if self.db.dbId.dbsys == 'sqlite':
             cmd = "REPLACE INTO "+table+inlist + " VALUES " + qmarkB
 
             
-        if self.db.dbsys == 'pgsql':
+        if self.db.dbId.dbsys == 'pgsql':
             # this is a mildly sleezy upsert.  pgsql has no upsert (replace into...)
             # so, do ...
             # ... an UPDATE which succeeds if there, and fails silently
@@ -799,20 +759,20 @@ class TestSet(object):
             self.db.close()
         else:
             
-            if self.db.dbsys == 'sqlite':
+            if self.db.dbId.dbsys == 'sqlite':
                 self.cache.connect()
                 self.cache.execute(cmd, allvalues)
                 self.cache.close()
 
             # race condition can occur here
-            if self.db.dbsys == 'pgsql':
+            if self.db.dbId.dbsys == 'pgsql':
                 i = 10
                 while i > 0:
                     threw = False
                     self.cache.connect()
                     try:
                         self.cache.execute(cmd, allvalues, lock_table=table)
-                    except self.interface.dbModule.IntegrityError, e:
+                    except self.db.dbModule.IntegrityError, e:
                         threw = True
                     self.cache.close()
 
