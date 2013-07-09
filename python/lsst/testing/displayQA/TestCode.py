@@ -763,33 +763,10 @@ class TestSet(object):
             self.db.execute(cmd, allvalues, lock_table=table)
             self.db.close()
         else:
-            
-            if self.db.dbId.dbsys == 'sqlite':
-                self.cache.connect()
-                self.cache.execute(cmd, allvalues)
-                self.cache.close()
-
-            # race condition can occur here
-            if self.db.dbId.dbsys == 'pgsql':
-                i = 10
-                while i > 0:
-                    threw = False
-                    self.cache.connect()
-                    try:
-                        self.cache.execute(cmd, allvalues, lock_table=table)
-                    except self.db.dbModule.IntegrityError, e:
-                        threw = True
-                    self.cache.close()
-
-                    # try again (otherwise, our counts will be off in the cache)
-                    if threw:
-                        i -= 1
-                        print "WARNING: Failed cache write.  Trying again."
-                        print "SQL>"+cmd
-                    # ... or we're ok
-                    else:
-                        break
-                        
+            self.cache.connect()
+            self.cache.execute(cmd, allvalues, lock_table=table)
+            self.cache.close()
+                
             
                     
     def _pureInsert(self, table, replacements, selectKeys, cache=False):
