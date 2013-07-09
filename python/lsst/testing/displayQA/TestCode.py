@@ -633,15 +633,14 @@ class TestSet(object):
                 dataset = v
 
             
-        # key: [regex, displaylabel, units, values]
+        # key: [operation, regex, displaylabel, units, values]
         extras = {
-            'fwhm' : [".*fwhm.*",                    "fwhm",            "[&Prime;] (FWHM)",           []],
-            'r50'  : [".*median astrometry error.*", "r<sub>50</sub>",  "[&Prime;] (Ast.error)", []],
-            'std'  : [".*stdev psf_vs_cat.*",        "&sigma;<sub>phot</sub>", "[mag] (psf-cat)",  []],
-            'comp' : [".*photometric depth.*",       "&omega;<sub>50</sub>", "[mag] (Completeness)", []],
-            "nccd" : [".*nCcd.*",                    "n<sub>CCD</sub>",      "(num. CCDs proc.)",     []],
-            "nstar": [".*nDet.*",                    "n<sub>*</sub>",        "(num. Detections)",  []],
-            #'zero' : [".*median zeropoint.*",        "ZP",               "[mag] (Zeropoint)",        []],
+            'fwhm' : ['mean', "fwhm",                    "fwhm",                 "[&Prime;] (FWHM)",      []],
+            'r50'  : ['mean', "median astrometry error", "r<sub>50</sub>",       "[&Prime;] (Ast.error)", []],
+            'std'  : ['mean', "stdev psf_vs_cat",        "&sigma;<sub>phot</sub>", "[mag] (psf-cat)",     []],
+            'comp' : ['mean', "photometric depth",       "&omega;<sub>50</sub>", "[mag] (Completeness)",  []],
+            "nccd" : ['sum',  "nCcd",                    "n<sub>CCD</sub>",      "(num. CCDs proc.)",     []] ,
+            "nstar": ['sum',  "nDet",                    "n<sub>*</sub>",        "(num. Detections)",     []],
             }
         
         # count the passed tests
@@ -663,17 +662,23 @@ class TestSet(object):
                 newest = entrytime
 
             for k, v in extras.items():
-                reg, displabel, units, values = v
+                op, reg, displabel, units, values = v
                 if re.search(reg, label) and not re.search("^99\.", str(vlu[0])):
-                    extras[k][3].append(vlu[0])
+                    extras[k][4].append(vlu[0])
 
         # encode any extras
         extraStr = ""
         extraValues = []
         for k,v in extras.items():
-            if len(v[3]) > 0:
-                v3list = map(float, v[3])
-                extraValues.append("%s:%.2f:%.2f:%s" % (v[1], numpy.mean(v3list), numpy.std(v3list), v[2]))
+            op, reg, displabel, units, values = v
+            if len(values) > 0:
+                valueList = map(float, values)
+                if op == 'mean':
+                    aggVal, aggErr = numpy.mean(valueList), numpy.std(valueList)
+                if op == 'sum':
+                    aggVal, aggErr = numpy.sum(valueList), 0
+                extraValues.append("%s:%.2f:%.2f:%s" % (displabel, aggVal, aggErr, units))
+
         extraStr = ",".join(extraValues)
         
         
