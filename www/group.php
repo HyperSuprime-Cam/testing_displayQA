@@ -15,6 +15,7 @@ $page = new Page(getDefaultTitle(), getDefaultH1(), $menu);
 $group = getGroup();
 $page->appendContent(getTestLinksThisGroup('group')."<br/>");
 $page->appendContent("<h2>Group: $group</h2><br/>");
+#$page->appendContent(writeQuickLookSummary());
 $page->appendContent(writeTable_SummarizeAllTests());
 
 $page->addSidebar(writeTable_timestamps($group));

@@ -37,15 +37,15 @@ function tfColor($string, $tf) {
 function verifyTest($value, $lo, $hi) {
     
     $cmp = 0; #true;  # default true (ie. no limits were set)
-    if ($lo and $hi) {
+    if (!is_null($lo) and !is_null($hi)) {
         if ($value < $lo) {
             $cmp = -1;
         } elseif ($value > $hi) {
             $cmp = 1;
         }
-    } elseif ($lo and !$hi and ($value < $lo)) {
+    } elseif (!is_null($lo) and is_null($hi) and ($value < $lo)) {
         $cmp = -1;
-    } elseif (!$lo and $hi and ($value > $hi)) {
+    } elseif (is_null($lo) and !is_null($hi) and ($value > $hi)) {
         $cmp = 1;
     }
     return $cmp;
@@ -84,7 +84,28 @@ function getDefaultTitle() {
 }
 
 function getDefaultH1() {
-    return "Q.A. Test Summary &nbsp;&nbsp; <a href=\"../\"><font size=\"3\">Go to main rerun list.</font></a>";
+    $s = "Q.A. Test Summary &nbsp;&nbsp; <a href=\"../\"><font size=\"3\">Go to main rerun list.</font></a>";
+    return $s . getSummaryLink();
+}
+
+function getSummaryLink() {
+    $uri = getCurrentUriDir();
+
+    # if this is -quick ... link to the main site.
+    # if this is the main site ... link to -quick
+    if (preg_match("/-quick$/", $uri)) {
+        $uri = preg_replace("/-quick$/", "", $uri);
+    } else {
+        $uri .= "-quick";
+    }
+
+    # make sure the other page exists and has a valid db
+    if (file_exists("../$uri/db.sqlite3")) {
+        $s = "&nbsp;&nbsp;&nbsp; <a href=\"../$uri/\"><font size=\"3\">Go to $uri</font></a>";
+    } else {
+        $s = "";
+    }
+    return $s;
 }
 
 function writeImgTag($dir, $filename, $details) {
@@ -585,9 +606,9 @@ function writeTable_timestamps($group=".*") {
             #if (! preg_match("/^test_$group/", $f)) { continue; }
             
             $db = connect($f);
-            $cmd = "select count(entrytime),min(entrytime),max(entrytime) from summary";
+            $cmd = "select count(s.entrytime),min(s.entrytime),max(s.entrytime) from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ?";
             $prep = $db->prepare($cmd);
-            $prep->execute();
+            $prep->execute(array($f));
             $results = $prep->fetchAll();
             $db = null;
             $result = $results[0];
@@ -612,8 +633,12 @@ function writeTable_timestamps($group=".*") {
     $table = new Table("width=\"80%\"");
     $table->addHeader(array("Oldest Entry", "Most Recent Entry"));
     $now = time();
-    $oldest = date("Y-m-d H:i:s", $min);
-    $latest = date("Y-m-d H:i:s", $max);
+    $oldest = $min;
+    $latest = $max;
+    if (! is_string($min)) {
+        $oldest = date("Y-m-d H:i:s", $min);
+        $latest = date("Y-m-d H:i:s", $max);
+    }
 
     if ($now - $max < 120) {
         $latest .= "<br/><font color=\"#880000\">(< 2m ago, testing in progress)</font>";
@@ -640,7 +665,7 @@ function writeTable_ListOfTestResults() {
 
     $headAttribs = array("align=\"center\"");
     $table->addHeader(
-        array("Label", "Timestamp", "Value", "Limits", "Comment"),
+        array("No.", "Label", "Timestamp", "Value", "Limits", "Comment"),
         $headAttribs
         );
 
@@ -648,13 +673,14 @@ function writeTable_ListOfTestResults() {
 
     $db = connect($testDir);
     if (! $db) { return "Unable to query database for $testDir."; }
-    $cmd = "select * from summary order by label";
+    $cmd = "select s.label, s.entrytime, s.lowerlimit, s.value, s.upperlimit, s.comment from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? order by label";
     $prep = $db->prepare($cmd);
-    $prep->execute();
+    $prep->execute(array($testDir));
     $result = $prep->fetchAll();
     $db = null;
     
-    $tdAttribs = array("align=\"left\"", "align=\"center\"",
+    $tdAttribs = array("align=\"left\"",
+                       "align=\"left\"", "align=\"center\"",
                        "align=\"right\" width=\"50\"", "align=\"center\"",
                        "align=\"left\" width=\"200\"");
 
@@ -672,6 +698,7 @@ function writeTable_ListOfTestResults() {
         }
     }
     $result = array_merge($failed, $passed);
+    $i = 1;
     foreach ($result as $r) {
         list($test, $lo, $value, $hi, $comment) =
             array($r['label'], $r['lowerlimit'], $r['value'], $r['upperlimit'], $r['comment']);
@@ -692,13 +719,17 @@ function writeTable_ListOfTestResults() {
         $thisLabel = $labelWords[count($labelWords)-1]; # this might just break ...
         $test .= ", <a href=\"summary.php?test=$testDir&active=$thisLabel\">Active</a>";
 
-        $mtime = date("Y-m-d H:i:s", $r['entrytime']);
+        $mtime = $r['entrytime'];
+        if (!is_string($mtime)) {
+            $mtime = date("Y-m-d H:i:s", $r['entrytime']);
+        }
 
         $loStr = $lo ? sprintf("%.4f", $lo) : "None";
         $hiStr = $hi ? sprintf("%.4f", $hi) : "None";
 
-        $table->addRow(array($test, $mtime,
+        $table->addRow(array($i, $test, $mtime,
                              hiLoColor($value, $lo, $hi), "[$loStr, $hiStr]", $comment), $tdAttribs);
+        $i += 1;
     }
 
     return $table->write();
@@ -733,9 +764,9 @@ function writeTable_OneTestResult($label) {
     global $dbFile;
     #$mtime = date("Y-m_d H:i:s", filemtime("$testDir/$dbFile"));
     $db = connect($testDir);
-    $cmd = "select * from summary where label = ?";
+    $cmd = "select s.label, s.entrytime, s.lowerlimit, s.value, s.upperlimit, s.comment, s.backtrace from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? and label = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute(array($label));
+    $prep->execute(array($testDir, $label));
     $result = $prep->fetchAll();
     $db = null;
     
@@ -779,9 +810,9 @@ function write_OneBacktrace($label) {
     
     global $dbFile;
     $db = connect($testDir);
-    $cmd = "select * from summary where label = ?";
+    $cmd = "select s.backtrace from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ? and label = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute(array($label));
+    $prep->execute(array($testDir, $label));
     $result = $prep->fetchAll();
     $db = null;
     
@@ -851,9 +882,9 @@ function writeTable_summarizeMetadata($keys, $group=".*") {
             foreach ($dirs as $testDir) {
                 
                 $db = connect($testDir);
-                $cmd = "select key, value from metadata where key = ?";
+                $cmd = "select distinct m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ? and key = ?";
                 $prep = $db->prepare($cmd);
-                $prep->execute(array($key));
+                $prep->execute(array($testDir, $key));
                 $results = $prep->fetchAll();
                 $db = null;
                 
@@ -883,10 +914,14 @@ function getDescription() {
     }
     $active = getActive();
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
+        $prep = $db->prepare($cmd);
+        $prep->execute(array($testDir));
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
     
     $description = "";
@@ -913,9 +948,9 @@ function getDescription2() {
     }
     $active = getActive();
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
+    $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
     $prep = $db->prepare($cmd);
-    $prep->execute();
+    $prep->execute(array($testDir));
     $results = $prep->fetchAll();
     $db = null;
     
@@ -968,6 +1003,84 @@ function getToggleLinks() {
     
 }
 
+
+function stealSummaryFigures() {
+
+    $group = getGroup();
+    $active = getActive();
+    $allGroups = getGroupList();
+    list($results, $nGrp) = loadCache();
+    $currTest = getDefaultTest();
+
+    # handle possible failure of the cache load
+    $testList = array();
+    if ($results != -1) {
+        foreach ($results as $r) {
+            $testList[] = $r['test'];
+        }
+    } else {
+        $dir = "./";
+        $d = @dir($dir) or dir("");
+        while(false !== ($testDir = $d->read())) {
+            if (preg_match("/test_/", $testDir)) {
+                $testList[] = $testDir;
+            }
+        }
+    }
+
+
+    # pick N tests to
+    $testLabels  = array("Astrom",              "EmptySect",              "psf-ap"              , "PsfShape");
+    $testRegexes = array("Astrometric",         "EmptySector",            "PhotCompare.*.psf-ap", "PsfShape");
+    $testFigures = array("medAstError",         "aa_emptySectorsMat",     "f01mean"             , "medPsfEllip");
+    $allFigs     = array("astromError-all.png", "pointPositions-all.png", "diff_psf-ap-all.png" , "psfEllip-all.png");
+    
+    $nImg = count($testRegexes);
+    $imWidth = intval(600.0/$nImg);
+
+    $tabLabels = array();
+    $figFiles = array();
+    $allFigFiles = array();
+    foreach ($testList as $t) {
+        # find the test dir
+        $tfig = "";
+        $tlab = "";
+        for($i = 0; $i<$nImg; $i++) {
+            $treg = $testRegexes[$i];
+            if (preg_match("/$treg/", $t)) {
+                $tfig = $testFigures[$i];
+                $tlab = $testLabels[$i];
+                $afig = $allFigs[$i];
+            }
+        }
+        if (! $tfig) {
+            continue;
+        }
+        
+        # get the -all.png and .navmap
+        $d = dir($t);
+        
+        while(false !== ($f = $d->read())) {
+            #echo "$f<br/>";
+            if (preg_match("/${tfig}.*\.png/", $f) ) {
+                $href = "summary.php?test=$t&active=$active";
+                $tabLabels[] = $tlab;
+                $figFiles[] = "<a href=\"$href\"><img src=\"$t/${f}\" width='$imWidth'></a>";
+                # get the -all figure
+                $allFigFiles[] = "<a href=\"$href\"><img src=\"$t/$afig\" width='$imWidth'></a>";
+            }            
+        }
+    }
+    
+    ## make a table entry
+    $table = new Table();
+    $table->addHeader($tabLabels);
+    $table->addRow($figFiles);
+    $table->addRow($allFigFiles);
+    
+    return $table->write();
+}
+
 function writeTable_metadata() {
 
     $testDir = getDefaultTest();
@@ -979,10 +1092,14 @@ function writeTable_metadata() {
     $meta = new Table();
     
     $db = connect($testDir);
-    $cmd = "select key, value from metadata";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select distinct m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
+        $prep = $db->prepare($cmd);
+        $prep->execute(array($testDir));
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
 
     $sql = "";
@@ -990,16 +1107,31 @@ function writeTable_metadata() {
         if (preg_match("/[dD]escription/", $r['key'])) {
             continue;
         }
-        if (preg_match("/[sS][qQ][Ll]/", $r['key'])) {
-            $sql .= wordwrap("<b>".$r['key']."</b><br/>".$r['value'], 40, "<br/>\n")."<br/><br/>\n";
+        if (preg_match("/SQL_(match|src)-/", $r['key'])) {
+            if ($active == 'all') { continue; }
+            if (preg_match("/$active/", $r['key'])) {
+                $sql .= wordwrap("<b>".$r['key']."</b><br/>".$r['value'], 40, "<br/>\n")."<br/><br/>\n";
+            }
             continue;
         }        
+        if ($active == 'all' && preg_match("/$active/", $r['value'])) {
+            continue;
+        }
         $meta->addRow(array($r['key'].":", $r['value']));
     }
     $meta->addRow(array("Active:", $active));
     if (strlen($sql) > 10) {
         $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
             "<div id=\"toggleSql\" style=\"display:none\">".$sql."</div>\n";
+        $meta->addRow(array("SQL:", $sqllink));
+    }
+ 
+    # at least say *something* for 'all' data, where the SQL used isn't meaningful
+    # --> Also. script.js expects displaySql and toggleSql ids to exist.
+    if ((strlen($sql) < 10) and ($active == 'all') ) {
+        $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
+            "<div id=\"toggleSql\" style=\"display:none\">SQL queries are per-CCD only.<br/>\n".
+            "('active' is currently set to 'all')</div>\n";
         $meta->addRow(array("SQL:", $sqllink));
     }
     return $meta->write();
@@ -1052,9 +1184,9 @@ function writeMappedFigures($suffix="map") {
         
         # get the caption
         $db = connect($testDir);
-        $cmd = "select caption from figure where filename = ?";
+        $cmd = "select f.caption from figure as f, testdir as t where f.testdirId = t.id and f.filename = ? and t.testdir = ?";
         $prep = $db->prepare($cmd);
-        $prep->execute(array($f));
+        $prep->execute(array($f, $testDir));
         $result = $prep->fetchColumn();
         $db = null;
         
@@ -1192,6 +1324,12 @@ function writeFigureArray($images_in, $testDir) {
     }
         
 
+    # if we didn't figure out the camera, there's no point in trying.
+    # ... just return ""
+    if (strlen($cam) == 0) {
+        return "";
+    }
+
     # now we know the camera, so look up where the sensor goes.
     $images_new = array();
     $camLookup = array_flip($cams[$cam]);
@@ -1273,10 +1411,14 @@ function writeFigures() {
     
     ## get the captions
     $db = connect($testDir);
-    $cmd = "select filename, caption from figure";
-    $prep = $db->prepare($cmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    if ($db) {
+        $cmd = "select f.filename, f.caption from figure as f, testdir as t where f.testdirId = t.id and t.testdir = ?";
+        $prep = $db->prepare($cmd);
+        $prep->execute(array($testDir));
+        $results = $prep->fetchAll();
+    } else {
+        $results = array();
+    }
     $db = null;
 
     $captions = array();
@@ -1370,11 +1512,18 @@ function summarizeTestsFromCache() {
 
 function summarizeTestByCounting($testDir) {
 
-    $db = connect($testDir);
-    $passCmd = "select * from summary";
-    $prep = $db->prepare($passCmd);
-    $prep->execute();
-    $results = $prep->fetchAll();
+    $results = array();
+    try {
+        $db = connect($testDir);
+        $passCmd = "select s.value,s.lowerlimit,s.upperlimit,s.entrytime from summary as s, testdir as t where s.testdirId = t.id and t.testdir = ?";
+        if ($db) {
+            $prep = $db->prepare($passCmd);
+            $prep->execute(array($testDir));
+            $results = $prep->fetchAll();
+        }
+    } catch (Exception $e) {
+        echo "Error reading $testDir<br/>";
+    }
     $db = null;
 
     $nTest = 0;
@@ -1405,6 +1554,32 @@ function summarizeTestByCounting($testDir) {
 #}
 
 
+function writeQuickLookSummary() {
+    $dir = "./";
+    $group = getGroup();
+    $dirs = glob("test_".$group."_*");
+    sort($dirs);
+
+    $meta = new Table();
+    foreach ($dirs as $testDir) {        
+        
+        $db = connect($testDir);
+        $cmd = "select m.key, m.value from metadata as m, testdir as t where m.testdirId = t.id and t.testdir = ?";
+        $prep = $db->prepare($cmd);
+        $prep->execute(array($testDir));
+        $results = $prep->fetchAll();
+        $db = null;
+
+        foreach ($results as $r) {
+            if (preg_match("/([sS][qQ][Ll]|[dD]escription|PipeQA|DisplayQA)/", $r['key'])) {
+                continue;
+            }
+            $meta->addRow(array($r['key'].":", $r['value']));
+        }
+    }
+    return $meta->write();
+    
+}
 
 
 function writeTable_SummarizeAllTests() {
@@ -1417,7 +1592,7 @@ function writeTable_SummarizeAllTests() {
     $msg .= "group: $group ".date("H:i:s")."<br/>";
 
     ## go through all directories and look for .summary files
-    $d = @dir($dir) or dir("");
+    #$d = @dir($dir) or dir("");
     $dirs = glob("test_".$group."_*"); #array();
     #while(false !== ($testDir = $d->read())) {
     #    $dirs[] = $testDir;
@@ -1478,7 +1653,10 @@ function writeTable_SummarizeAllTests() {
             $lastUpdate = $summ['newest'];
         }
         if ($lastUpdate  > 0) {
-            $timestampStr = date("Y-m-d H:i:s", $lastUpdate);
+            $timestampStr = $lastUpdate;
+            if (!is_string($lastUpdate)) {
+                $timestampStr = date("Y-m-d H:i:s", $lastUpdate);
+            }
         } else {
             $timestampStr = "n/a";
         }
@@ -1507,10 +1685,13 @@ function loadCache() {
     if ($alreadyLoaded) {
         return array($results2, $nGroup);
     } else {
-        if (!file_exists("db.sqlite3")) {
+        
+        $db = connect(".");
+
+        if (is_null($db)) {
             return array(-1, -1);
         }
-        $db = connect("."); #$testDir);
+        
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         try {
             $testCmd = "select * from counts order by test;";
@@ -1879,7 +2060,10 @@ function writeTable_SummarizeAllGroups() {
             #$failRate = tfColor(sprintf("%.3f", $failRate), ($failRate == 0.0));
         }
         if ($lastUpdate > 0) {
-            $timestampStr = date("Y-m-d H:i", $lastUpdate);
+            $timestampStr = $lastUpdate;
+            if (! is_string($lastUpdate)) {
+                $timestampStr = date("Y-m-d H:i", $lastUpdate);
+            }
         } else {
             $timestampStr = "n/a";
         }
@@ -1895,6 +2079,9 @@ function writeTable_SummarizeAllGroups() {
 
         # see if this is a special group
         foreach ($specialGroups as $sg => $arr) {
+            if (preg_match("/^\.\*$/", $sg) && $group === "") {
+                continue;
+            }
             if (preg_match("/$sg/", $group)) {
                 if (count($arr) == 0) {
                     $arr = array(0, 0, 0, 0, 0);

@@ -12,7 +12,8 @@
 %prog [options] name
 """
 
-import sys, os, re, glob, shutil
+import sys, os, re, glob, shutil, stat
+import commands
 import optparse
 
 haveEups = True
@@ -30,6 +31,8 @@ except:
 
 def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", project='lsst'):
 
+    pqaDb = "pqa_"+qaName
+    
     # verify that we have WWW_ROOT and TESTING_DISPLAYQA_DIR
     envVars = ['TESTING_DISPLAYQA_DIR']
     if wwwRoot is None:
@@ -90,7 +93,8 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
         fp.close()
 
 
-                
+        
+    ###############################################
     # copy the www/ to the destination
     src = os.path.join(dqaDir, "www")
     patterns = ["php", "js"]
@@ -135,6 +139,15 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     print "   ",dest
 
 
+
+    #####################################
+    # load DB info, will we use sqlite, pgsql ... host, port, user?
+    dbAuthFile = os.path.join(os.environ["HOME"], ".pqa", "db-auth.py")
+    if os.path.exists(dbAuthFile):
+        exec(open(dbAuthFile).read())
+
+    ######################################
+    # handle forced cleaning
     envFile = os.path.join(dest, "environment.php")
     if forceClean:
         print ""
@@ -148,12 +161,72 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
             print "   ", os.path.split(testDir)[1]
             shutil.rmtree(testDir)
 
+        # we'll blow away the db if needed
+        if dbsys == 'pgsql':
+            print "Determining if database", pqaDb, "exists (set PGPASSWORD to avoid typing password)."
+            cmdCheckExists = "psql -l -h %s -p %s -U %s | grep %s | wc -l" % (host, port, user, pqaDb)
+            existsStatus, existsRet = commands.getstatusoutput(cmdCheckExists)
+            if existsRet != '0':
+                print "Database", pqaDb, "already exists."
+                dropdb = "dropdb -h %s -p %s -U %s %s" % (host, port, user, pqaDb)
+                print "Dropping database:", pqaDb
+                os.system(dropdb)
 
+        if dbsys == 'mysql':
+            pass
+                
+    if dbsys == 'pgsql':
+
+        cmdCheckExists = "psql -l -h %s -p %s -U %s | grep %s | wc -l" % (host, port, user, pqaDb)
+        existsStatus, existsRet = commands.getstatusoutput(cmdCheckExists)
+
+        # only try if it doesn't already exist
+        # -F means it should have been blown away by dropdb above
+        # -f means leave it alone if it's there (force install, but no overwrite of data)
+        if existsRet == '0':
+            createdb = "createdb -h %s -p %s -U %s %s" % (host, port, user, pqaDb)
+            print "Attempting to create new database: ", pqaDb
+            createStatus, createRet = commands.getstatusoutput(createdb)
+            # we should never see this
+            if createStatus == 256:
+                print "Database ", pqaDb, "already exists.  Use -F to force delete."
+            # some generic error occurred
+            elif createStatus != 0:
+                print "createdb failed for %s. Returned status %s: %s" % (qaName, createStatus, createRet)
+            elif createStatus == 0:
+                print "Database ", pqaDb, "successfully created."
+            
+    if dbsys == 'mysql':
+        pass
+
+            
+    #########################################
     # touch the environment file to make sure it's there.
     with file(envFile, 'a'):
         os.utime(envFile, None)
 
-                
+        
+    #########################################
+    # make sure the matplotlib hidden dir is there and is writeable
+    mpldir = os.path.join(wwwRoot, ".matplotlib")
+    if not os.path.exists(mpldir):
+        os.mkdir(mpldir)
+    os.chmod(mpldir, os.stat(mpldir).st_mode | stat.S_IRWXO)
+        
+
+    #########################################
+    # generate a dbconfig.php file
+    dbConfFile = os.path.join(dest, "dbconfig.php")
+    with open(dbConfFile, 'w') as dbFp:
+        dbFp.write("<?php\n")
+        dbFp.write("$host = '"+host+"';\n")
+        dbFp.write("$port = '"+port+"';\n")
+        dbFp.write("$user = '"+user+"';\n")
+        dbFp.write("$password = '"+password+"';\n")
+        dbFp.write("$dbsys = '"+dbsys+"';\n")
+        dbFp.write("$dbname = '"+pqaDb+"';\n")
+        
+        
 #############################################################
 # end
 #############################################################
