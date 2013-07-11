@@ -319,6 +319,18 @@ class DatabaseId(object):
             self.dbpasswd  = password
             self.dbport    = port
             self.dbsys     = dbsys
+        else:
+            print "\033[32;1m"
+            print "File:", dbAuthFile, "is missing.  It should look like this: "
+            print "\n".join(['$ cat ~/.pqa/db-auth.py"',
+                             'host = "host.domain.edu"',
+                             'port = "5432"',
+                             'user = "you"',
+                             'password = "secret"',
+                             'dbsys = "pgsql"'])
+            print "\033[0m"
+            raise RuntimeError("Missing pipeQa database authetication file: " + dbAuthFile)
+
 
         # override with kwargs dbhost,dbuser, etc  if kwarg value is not None
         #self.__dict__.update({k:v for k,v in kwargs.iteritems() if v and k in self.__dict__})

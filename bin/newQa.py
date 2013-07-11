@@ -145,7 +145,20 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
     dbAuthFile = os.path.join(os.environ["HOME"], ".pqa", "db-auth.py")
     if os.path.exists(dbAuthFile):
         exec(open(dbAuthFile).read())
+    else:
+        print "\033[32;1m"
+        print "File:", dbAuthFile, "is missing.  It should look like this: "
+        print "\n".join(['$ cat ~/.pqa/db-auth.py"',
+                         'host = "host.domain.edu"',
+                         'port = "5432"',
+                         'user = "you"',
+                         'password = "secret"',
+                         'dbsys = "pgsql"'])
+        print "\033[0m"
+        raise RuntimeError("Missing pipeQa database authetication file: " + dbAuthFile)
 
+
+    
     ######################################
     # handle forced cleaning
     envFile = os.path.join(dest, "environment.php")
