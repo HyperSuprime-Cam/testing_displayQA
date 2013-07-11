@@ -1892,20 +1892,13 @@ function getAllTestDirsByGroup() {
 function writeTable_SummarizeAllGroups() {
 
     $groups = getGroupList();
-    #echo "have groups<br/>";
-
     $summs = summarizeTestsFromCache();
-    #echo "have summs<br/>";
-    
     $dirs = getAllTestDirsByGroup();
-    #echo "have testdirs<br/>";
 
-    #".*-u$" => array(),
-    #".*-g$" => array(),
-    #".*-r$" => array(),
-    #".*-i$" => array(),
-    #".*-z$" => array(),
-    #".*-y$" => array()
+    
+    ###########################################################
+    # define the special groups, key is a regex
+    ###########################################################
     
     $specialGroups = array(
         ".*" => array(),
@@ -1941,9 +1934,12 @@ function writeTable_SummarizeAllGroups() {
         ".*[12]-z$" => "z cloudless",
         ".*[12]-y$" => "y cloudless"
         );
-    
-    ## go through all directories
-    # get the extraKeys
+
+
+    #########################################################
+    # go through all directories to get all extraKeys
+    # the 'extra' keys are things like fwhm, or r_50.  these are cached summaries for a group
+    #########################################################
     $extraKeys = array();
      
     foreach ($groups as $group=>$n) {
@@ -1975,7 +1971,13 @@ function writeTable_SummarizeAllGroups() {
     }
     $extraKeys = array_keys($extraKeys);
     sort($extraKeys);
+
+
     
+    #################################################################
+    # For each group, check each testSet and count up the total
+    # number of pass/fail values
+    #################################################################
     $extras = array();
 
     $iSet = getFloat('iset', '0');
@@ -1985,20 +1987,19 @@ function writeTable_SummarizeAllGroups() {
     $iGroup = $iSet*$nInSet + 1;
     foreach ($groups as $group=>$n) {
 
-        #echo "group: ".$group."<br/>";
         $nTestSets = 0;
         $nTestSetsPass = 0;
         $nTest = 0;
         $nPass = 0;
                 
         $lastUpdate = 0;
-        #$d = @dir($dir) or dir("");
-        #while(false !== ($testDir = $d->read())) {
         if (!array_key_exists($group, $dirs)) {
             continue;
         }
 
-        #echo "$group<br/>";
+        #############
+        # check each test for this group
+        #############
         foreach ($dirs[$group] as $testDir) {
 
             # must deal with default group "" specially
@@ -2057,7 +2058,6 @@ function writeTable_SummarizeAllGroups() {
         $failRate = 0; #"n/a";
         if ($nTest > 0) {
             $failRate = 1.0 - 1.0*$nPass/$nTest;
-            #$failRate = tfColor(sprintf("%.3f", $failRate), ($failRate == 0.0));
         }
         if ($lastUpdate > 0) {
             $timestampStr = $lastUpdate;
@@ -2077,7 +2077,10 @@ function writeTable_SummarizeAllGroups() {
         $iGroup += 1;
 
 
+        ##########
         # see if this is a special group
+        # if this group is one of the 'special' ones, include the pass/fail info
+        # in the array for the special group
         foreach ($specialGroups as $sg => $arr) {
             if (preg_match("/^\.\*$/", $sg) && $group === "") {
                 continue;
@@ -2085,9 +2088,6 @@ function writeTable_SummarizeAllGroups() {
             if (preg_match("/$sg/", $group)) {
                 if (count($arr) == 0) {
                     $arr = array(0, 0, 0, 0, 0);
-                    #foreach ($extraKeys as $ek) {
-                    #    $arr[] = array();
-                    #}
                 }
                 $arr[0] += $nTestSets;
                 $arr[1] += $nTestSetsPass;
@@ -2112,6 +2112,10 @@ function writeTable_SummarizeAllGroups() {
         }
     }
 
+
+    ###########################################################
+    # Get the stats for each special group (cloudy, etc)
+    ###########################################################
     
     $sgRows = array();
     foreach ($specialGroups as $sg => $arr) {
@@ -2129,13 +2133,14 @@ function writeTable_SummarizeAllGroups() {
         $nTestSetsFail = $nTestSets - $nTestSetsPass;
         $nFail = $nTest - $nPass;
         $failRate = ($nTest > 0) ? sprintf("%.3f", 1.0*$nFail/$nTest) : 0; #"n/a";
-        #$failRate = tfColor(sprintf("%.3f", $failRate), ($failRate == 0.0));
-
         $passLink = tfColor(sprintf("$nFail / %.1f", 100.0*$failRate), ($nPass==$nTest));
         
         $row = array("n=".$nMatch, $specialGroupLabels[$sg], "n/a",
                      "$nTestSets / $nTestSetsFail", $nTest, $passLink);
 
+        ###############
+        # get stats for each extra field
+        ###############
         $i = 5;
         foreach ($extraKeys as $k) {
             if (array_key_exists($i, $arr)) {
@@ -2161,11 +2166,14 @@ function writeTable_SummarizeAllGroups() {
     $spaceRow = array("&nbsp;", "", "", "", "", "", "", "");
     
 
+
+    #########################################################
+    # Create the table
+    #########################################################
     
     $table = new Table("width=\"100%\"");
-    #$tdAtt = array();
-    $pSymb = "Pass"; #"<font color=\"#009900\">&#x2713;</font>";
-    $fSymb = "Fail"; #"<font color=\"#990000\">X</font>";
+    $pSymb = "Pass";
+    $fSymb = "Fail";
     $head= array("No.", "Test", "mtime", "Sets/$fSymb", "Tests", "$fSymb / %");
     $tdAttribs = array("align=\"left\"", "align=\"left\"", # "align=\"left\"",
                        "align=\"right\"", "align=\"right\"",
@@ -2180,15 +2188,15 @@ function writeTable_SummarizeAllGroups() {
     
     $table->addHeader($head, $tdAttribs);
     foreach ($sgRows as $row) {
-        #foreach ($extraKeys as $k=>$v) {
-        #    $row[] = "";
-        #}
         $table->addRow($row, $tdAttribs);
     }
     
     for($i=0; $i < count($rows); $i++) {
         $row = $rows[$i];
         $group = $groupShowing[$i];
+
+        ########
+        # append the 'extra' info as fields in this row
         foreach ($extraKeys as $k) {
             if (array_key_exists($group, $extras) and array_key_exists($k, $extras[$group])) {
                 list($v, $e, $u) = $extras[$group][$k];
