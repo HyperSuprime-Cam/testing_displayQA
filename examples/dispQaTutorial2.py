@@ -31,7 +31,7 @@ def main():
 
 
     # create a TestSet
-    ts = dispQA.TestSet(group="tutorial", label="clickplot-howto")
+    ts = dispQA.TestSet(group="tutorial", label="clickplot-howto", wwwCache=True)
 
     # Add some metadata
     ts.addMetadata("time-run", datetime.datetime.now().strftime("%a %Y-%m-%d %H:%M:%S"))

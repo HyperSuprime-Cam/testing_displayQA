@@ -37,7 +37,7 @@ def main():
     # - Each TestSet is labeled (and listed) according to script name, by default,
     #   --> 'label="mylabel"' appends .mylabel to a TestSet label
     #   --> This allows multiple TestSets to be created in a single script.
-    ts = dispQA.TestSet(group="tutorial", label="basic-howto")
+    ts = dispQA.TestSet(group="tutorial", label="basic-howto", wwwCache=True)
 
 
     #############################
