@@ -177,7 +177,7 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
         # we'll blow away the db if needed
         if dbsys == 'pgsql':
             print "Determining if database", pqaDb, "exists (set PGPASSWORD to avoid typing password)."
-            cmdCheckExists = "psql -l -h %s -p %s -U %s | grep %s | wc -l" % (host, port, user, pqaDb)
+            cmdCheckExists = "psql -l -h %s -p %s -U %s | grep ' %s ' | wc -l" % (host, port, user, pqaDb)
             existsStatus, existsRet = commands.getstatusoutput(cmdCheckExists)
             if existsRet != '0':
                 print "Database", pqaDb, "already exists."
@@ -190,7 +190,7 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
                 
     if dbsys == 'pgsql':
 
-        cmdCheckExists = "psql -l -h %s -p %s -U %s | grep %s | wc -l" % (host, port, user, pqaDb)
+        cmdCheckExists = "psql -l -h %s -p %s -U %s | grep ' %s ' | wc -l" % (host, port, user, pqaDb)
         existsStatus, existsRet = commands.getstatusoutput(cmdCheckExists)
 
         # only try if it doesn't already exist
