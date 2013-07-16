@@ -1016,7 +1016,10 @@ function stealSummaryFigures() {
     $testList = array();
     if ($results != -1) {
         foreach ($results as $r) {
-            $testList[] = $r['test'];
+            $t = $r['test'];
+            if (preg_match("/$group/", $t)) {
+                $testList[] = $r['test'];
+            }
         }
     } else {
         $dir = "./";
