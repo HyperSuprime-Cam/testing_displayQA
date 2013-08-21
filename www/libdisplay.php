@@ -4,7 +4,7 @@ include_once("Html.php");
 include_once("libdb.php");
 include_once("environment.php");
 
-date_default_timezone_set('America/New_York');
+date_default_timezone_set('Asia/Tokyo');
 
 function p($val,$ret=0) {
     static $i = 0;
