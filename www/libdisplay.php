@@ -1106,37 +1106,59 @@ function writeTable_metadata() {
     $db = null;
 
     $sql = "";
+    $eups = "";
     foreach ($results as $r) {
         if (preg_match("/[dD]escription/", $r['key'])) {
             continue;
         }
+
+        # SQL query toggle
         if (preg_match("/SQL_(match|src)-/", $r['key'])) {
             if ($active == 'all') { continue; }
             if (preg_match("/$active/", $r['key'])) {
                 $sql .= wordwrap("<b>".$r['key']."</b><br/>".$r['value'], 40, "<br/>\n")."<br/><br/>\n";
             }
             continue;
-        }        
+        }
+        # eups setup toggle
+        if (preg_match("/EUPS_(qa|pipe)-/", $r['key'])) {
+            if ($active == 'all') { continue; }
+            if (preg_match("/$active/", $r['key'])) {
+                $eups .= "<b>".$r['key']."</b><br/>".preg_replace("/\n/", "<br/>\n", $r['value']);
+            }
+            continue;
+        }
+        
         if ($active == 'all' && preg_match("/$active/", $r['value'])) {
             continue;
         }
         $meta->addRow(array($r['key'].":", $r['value']));
     }
     $meta->addRow(array("Active:", $active));
-    if (strlen($sql) > 10) {
+
+    
+    ## The SQL toggle
+    if ((strlen($sql) > 10) || ($active == 'all')) {
+        $sql_str = "SQL queries are per-CCD only.<br/>\n('active' is currently set to 'all')";
+        if ($active != 'all') {
+            $sql_str = $sql;
+        }
         $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
-            "<div id=\"toggleSql\" style=\"display:none\">".$sql."</div>\n";
+            "<div id=\"toggleSql\" style=\"display:none\">".$sql_str."</div>\n";
         $meta->addRow(array("SQL:", $sqllink));
     }
  
-    # at least say *something* for 'all' data, where the SQL used isn't meaningful
-    # --> Also. script.js expects displaySql and toggleSql ids to exist.
-    if ((strlen($sql) < 10) and ($active == 'all') ) {
-        $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
-            "<div id=\"toggleSql\" style=\"display:none\">SQL queries are per-CCD only.<br/>\n".
-            "('active' is currently set to 'all')</div>\n";
-        $meta->addRow(array("SQL:", $sqllink));
+    ## the EUPS toggle
+    if ((strlen($eups) > 10) || ($active == 'all')) {
+        $eups_str = "EUPS setups are stored per-CCD.<br/>\n('active' is currently set to 'all')";
+        if ($active != 'all') {
+            $eups_str = $eups;
+        }
+        $eupslink = "<a href=\"#\" id=\"displaySetup\"></a>\n".
+            "<div id=\"toggleSetup\" style=\"display:none\">".$eups_str."</div>\n";
+        $meta->addRow(array("EUPS:", $eupslink));
     }
+    
     return $meta->write();
 }
 
