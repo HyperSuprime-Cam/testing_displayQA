@@ -1138,26 +1138,30 @@ function writeTable_metadata() {
 
     
     ## The SQL toggle
-    if ((strlen($sql) > 10) || ($active == 'all')) {
-        $sql_str = "SQL queries are per-CCD only.<br/>\n('active' is currently set to 'all')";
-        if ($active != 'all') {
+    $sql_str = "Butler loaded.";
+    if (strlen($sql) > 10) {
+        if ($active == 'all') {
+            $sql_str = "SQL queries are per-CCD only.<br/>\n('active' is currently set to 'all')";
+        } else {
             $sql_str = $sql;
         }
-        $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
-            "<div id=\"toggleSql\" style=\"display:none\">".$sql_str."</div>\n";
-        $meta->addRow(array("SQL:", $sqllink));
     }
- 
+    $sqllink = "<a href=\"#\" id=\"displaySql\"></a>\n".
+        "<div id=\"toggleSql\" style=\"display:none\">".$sql_str."</div>\n";
+    $meta->addRow(array("SQL:", $sqllink));
+
+    
     ## the EUPS toggle
-    if ((strlen($eups) > 10) || ($active == 'all')) {
+    $eups_str = "Unknown";
+    if ($active == 'all') {
         $eups_str = "EUPS setups are stored per-CCD.<br/>\n('active' is currently set to 'all')";
-        if ($active != 'all') {
-            $eups_str = $eups;
-        }
-        $eupslink = "<a href=\"#\" id=\"displaySetup\"></a>\n".
-            "<div id=\"toggleSetup\" style=\"display:none\">".$eups_str."</div>\n";
-        $meta->addRow(array("EUPS:", $eupslink));
+    } else if (strlen($eups) > 10) {
+        $eups_str = $eups;
     }
+
+    $eupslink = "<a href=\"#\" id=\"displaySetup\"></a>\n".
+        "<div id=\"toggleSetup\" style=\"display:none\">".$eups_str."</div>\n";
+    $meta->addRow(array("EUPS:", $eupslink));
     
     return $meta->write();
 }
