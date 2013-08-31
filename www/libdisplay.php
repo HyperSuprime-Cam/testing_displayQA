@@ -1327,7 +1327,7 @@ function writeFigureArray($images_in, $testDir) {
 
     # append the extra characters to the hsc strings
     for($i=0; $i<count($cams['hsc']); $i++) {
-        $tmp = "hsc".$cams['hsc'][$i]."--0".$cams['hsc'][$i];
+        $tmp = "-".$cams['hsc'][$i]."-\d_\d\d--0".$cams['hsc'][$i];
         $cams['hsc'][$i] = $tmp;
     }
 
@@ -1348,12 +1348,14 @@ function writeFigureArray($images_in, $testDir) {
             $images[] = $im;
             foreach ($cams as $cam=>$arr) {
                 $regx = join("|", $arr);
+                #echo "$regx    $im<br/>";
                 if (preg_match("(/".$regx."/)", $im)) {
                     $camCount[$cam] += 1;
                 }
             }
         }
     }
+    #echo $camCount['hsc'];
     # the camera whose detector names matched the most figures wins.
     $cam = "";
     $camMax = 0;
