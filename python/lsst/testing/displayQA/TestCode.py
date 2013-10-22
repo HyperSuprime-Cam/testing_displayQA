@@ -286,7 +286,7 @@ class SqliteInterface(DbInterface):
         if self.debug:
             self._connDebug(self.debugFile, "open")
 
-        self.dbModule = __import__('sqlite')
+        self.dbModule = __import__('sqlite3')
 
 
     def int(self, name):
@@ -528,7 +528,7 @@ class TestSet(object):
         # for sqlite, we have to combine the per-ccd db.sqlite files into one file
         if self.db.dbId.dbsys == 'sqlite':
 
-            import sqlite
+            import sqlite3 as sqlite
             
             dbs = glob.glob(os.path.join(self.wwwDir, "db-*.sqlite3"))
 
