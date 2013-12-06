@@ -258,7 +258,7 @@ if __name__ == '__main__':
     parser.add_argument("qaName",
                       help="Name of the project.  Used as new directory under WWW_ROOT.")
     parser.add_argument('-c', '--color', default="blue",
-                      choices=("blue", "green", "red", "brown", "gray"),
+                      choices=("blue", "green", "red", "brown"),
                       help="Specify style color.")
     
     parser.add_argument("-f", '--force', default=False, action="store_true",
@@ -270,7 +270,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", '--noquery', default=False, action="store_true",
                       help="Don't query about options ... user knows what user is doing.")
     parser.add_argument("-p", '--project_icons', default='lsst',
-                      choices=('lsst', 'hsc'),
+                      choices=('lsst', 'hsc', 'sc'),
                       help="Specify project-specific icons for page.")
 
     args = parser.parse_args()
