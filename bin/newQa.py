@@ -20,13 +20,9 @@
 # the GNU General Public License along with this program.  If not,
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
-"""
-%prog [options] name
-"""
-
 import sys, os, re, glob, shutil, stat
 import commands
-import optparse
+import argparse
 
 haveEups = True
 try:
@@ -41,7 +37,7 @@ except:
 #
 #############################################################
 
-def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", project='lsst'):
+def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", project_icons='lsst'):
 
     pqaDb = "pqa_"+qaName
     
@@ -124,7 +120,7 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
 
     # handle the css and favicon files based on color chosen
     style_base = "style_"+color+".css"
-    favicon_base = project+"_favicon_"+color+".png"
+    favicon_base = project_icons+"_favicon_"+color+".png"
     files = [
         [style_base,   os.path.join(src, style_base),   os.path.join(dest, "style.css")],
         [favicon_base, os.path.join(src, favicon_base), os.path.join(dest, "favicon.ico")],
@@ -257,43 +253,39 @@ def main(qaName, wwwRoot=None, force=False, forceClean=False, color="blue", proj
 #############################################################
 
 if __name__ == '__main__':
-    parser = optparse.OptionParser(usage=__doc__)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("qaName",
+                      help="Name of the project.  Used as new directory under WWW_ROOT.")
+    parser.add_argument('-c', '--color', default="blue",
+                      choices=("blue", "green", "red", "brown", "gray"),
+                      help="Specify style color.")
     
-    parser.add_option('-c', '--color', default="blue",
-                      help="Specify style color (default=%default)")
-    parser.add_option("-f", '--force', default=False, action="store_true",
-                      help="Force a reinstall if already exists (default=%default)")
-    parser.add_option("-F", '--forceClean', default=False, action="store_true",
-                      help="Force a reinstall and remove existing data (default=%default)")
-    parser.add_option('-r', '--root', default=None, help="Override WWW_ROOT (default=%default")
-    parser.add_option("-n", '--noquery', default=False, action="store_true",
-                      help="Don't query about options ... user knows what user is doing. (default=%default)")
-    parser.add_option("-p", '--project', default='lsst',
-                      help="Specify project for page (changes which icons are used, default=%default)")
-    opts, args = parser.parse_args()
+    parser.add_argument("-f", '--force', default=False, action="store_true",
+                      help="Force a reinstall if already exists.")
+    parser.add_argument("-F", '--forceClean', default=False, action="store_true",
+                      help="Force a reinstall and remove existing data")
+    
+    parser.add_argument('-r', '--root', default=None, help="Override WWW_ROOT.")
+    parser.add_argument("-n", '--noquery', default=False, action="store_true",
+                      help="Don't query about options ... user knows what user is doing.")
+    parser.add_argument("-p", '--project_icons', default='lsst',
+                      choices=('lsst', 'hsc'),
+                      help="Specify project-specific icons for page.")
 
-    if len(args) != 1:
-        parser.print_help()
-        sys.exit(1)
+    args = parser.parse_args()
 
-    qaName, = args
-
-    if opts.forceClean and not opts.noquery:
+    if args.forceClean and not args.noquery:
         query = raw_input("--forceClean is set, and will to delete any/all existing data in rerun %s."\
-                          " Continue [y/N]: " % (qaName))
+                          " Continue [y/N]: " % (args.qaName))
         if not re.search("^[yY]", query):
             print "Exiting. (You may wish to consider --force instead of --forceClean)"
             sys.exit(1)
         
 
-    if opts.forceClean:
-        opts.force = True
+    if args.forceClean:
+        args.force = True
 
-    opts.project = opts.project.lower()
-    if not re.search('^(lsst|hsc)$', opts.project):
-        print "project must be 'lsst' or 'hsc'"
-        sys.exit(1)
-        
-    main(qaName, wwwRoot=opts.root, force=opts.force, forceClean=opts.forceClean,
-         color=opts.color, project=opts.project)
+    main(args.qaName, wwwRoot=args.root, force=args.force, forceClean=args.forceClean,
+         color=args.color, project_icons=args.project_icons)
     
