@@ -34,6 +34,8 @@ function tfColor($string, $tf) {
     return $colorout;
 }
 
+$yelLimit = 0.06;
+$grnLimit = 0.001;
 function verifyTest($value, $lo, $hi) {
     
     $cmp = 0; #true;  # default true (ie. no limits were set)
@@ -50,6 +52,27 @@ function verifyTest($value, $lo, $hi) {
     }
     return $cmp;
 }
+
+
+######################################
+# traffic light color
+# color text green if below $lo, yellow between $lo and $hi, and red above $hi
+######################################
+function trafficLightColor($string, $value, $lo, $hi) {
+    $fvalue = floatval($value);
+    $cmp = verifyTest($fvalue, $lo, $hi);
+    if ($cmp == 0) { #(!$lo or $fvalue >= $lo) and (!$hi or $fvalue <=$hi)) {
+        $colorout = "<font color=\"#999900\">$string</font>";
+    } elseif ($cmp < 0) { #$lo and $fvalue < $lo) {
+        $colorout = "<font color=\"#00aa00\">$string</font>";
+    } elseif ($cmp > 0) { #$hi and $fvalue > $hi) {
+        $colorout = "<font color=\"#880000\">$string</font>";
+    } else {
+        $colorout = "$string";
+    }
+    return $colorout;
+}
+
 
 function hiLoColor($value, $lo, $hi) {
     $fvalue = floatval($value);
@@ -132,7 +155,10 @@ function writeImgTag($dir, $filename, $details) {
         echo "Sys-call output: ".$output."<br/>\n";
         
     } else {
-        $s = "<img src=\"imageGenerate.php?imgen_path=$path\" $details>";
+        $s = "<img src=\"imageGenerate.php?imgen_path=$path\" $details><br/>";
+        if (file_exists($path.".sh")) {
+            $s .= "<a href=\"imageGenerate.php?imgen_path=$path&force=1\">Regenerate</a>";
+        }
     }
 
     return $s;
@@ -269,6 +295,16 @@ function getTestLinksThisGroup($page) {
         }
     }
     ksort($testDirs);
+
+    # put the SummaryQa at the front of the ist
+    if (array_key_exists("Summ", $testDirs)) {
+        $t_tmp = $testDirs["Summ"];
+        unset($testDirs["Summ"]);
+        # sleezy unshift for k,v array
+        $testDirs = array_reverse($testDirs, true);
+        $testDirs["Summ"] = $t_tmp;
+        $testDirs = array_reverse($testDirs, true);
+    }
 
 
     $outString = "";
@@ -529,6 +565,7 @@ function getGroupList() {
         }
     }
     ksort($groups);
+    
     return $groups;
 }
 function getGroup() {
@@ -1626,6 +1663,10 @@ function writeQuickLookSummary() {
 
 
 function writeTable_SummarizeAllTests() {
+
+    global $yelLimit;
+    global $grnLimit;
+    
     $dir = "./";
 
     $msg = "";
@@ -1642,6 +1683,17 @@ function writeTable_SummarizeAllTests() {
     #}
     sort($dirs);
 
+    $summQa = "";
+    foreach ($dirs as $d) {
+        if (preg_match("/SummaryQa/", $d)) {
+            $summQa = $d;
+        }
+    }
+    if ($summQa) {
+        $dirs = array_diff($dirs, array($summQa));
+        array_unshift($dirs, $summQa);
+    }
+    
     $tdAttribs = array("align=\"left\"", "align=\"left\"",
                        "align=\"right\"","align=\"right\"", "align=\"right\"");
 
@@ -1685,13 +1737,15 @@ function writeTable_SummarizeAllTests() {
         $testLink = "<a href=\"summary.php?test=${testDir}&active=$active\">$testDirStr</a>";
 
         $nFail = $summ['ntest'] - $summ['npass'];
-        $passLink = tfColor($summ['npass'] . " / " . $nFail, ($summ['npass']==$summ['ntest']));
         $failRate = "n/a";
+        $passLink = tfColor($summ['npass']." / ".$nFail, ($summ['npass']==$summ['ntest']));
         if ($summ['ntest'] > 0) {
-            $failRate = 1.0 - 1.0*$summ['npass']/$summ['ntest'];
-            $failRate = tfColor(sprintf("%.3f", $failRate), ($failRate == 0.0));
+            $failRateTmp = 1.0 - 1.0*$summ['npass']/$summ['ntest'];
+            $failRate = trafficLightColor(sprintf("%.3f", $failRateTmp), $failRateTmp, $grnLimit, $yelLimit);
+            $passLink = trafficLightColor($summ['npass']." / ".$nFail, $failRateTmp, $grnLimit, $yelLimit);
         }
-        $lastUpdate = $summ['entrytime'];
+
+    $lastUpdate = $summ['entrytime'];
         if (array_key_exists('newest', $summ)) {
             $lastUpdate = $summ['newest'];
         }
@@ -1934,6 +1988,9 @@ function getAllTestDirsByGroup() {
 
 function writeTable_SummarizeAllGroups() {
 
+    global $grnLimit;
+    global $yelLimit;
+    
     $groups = getGroupList();
     $summs = summarizeTestsFromCache();
     $dirs = getAllTestDirsByGroup();
@@ -2110,7 +2167,8 @@ function writeTable_SummarizeAllGroups() {
         } else {
             $timestampStr = "n/a";
         }
-        $passLink = tfColor(sprintf("$nFail / %.1f", 100.0*$failRate), ($nPass==$nTest));
+        
+        $passLink = trafficLightColor(sprintf("$nFail / %.1f", 100.0*$failRate), $failRate, $grnLimit, $yelLimit);
 
         $nTestSetsFail = $nTestSets - $nTestSetsPass;
         $row = array($iGroup, $testLink, $timestampStr,
@@ -2176,7 +2234,8 @@ function writeTable_SummarizeAllGroups() {
         $nTestSetsFail = $nTestSets - $nTestSetsPass;
         $nFail = $nTest - $nPass;
         $failRate = ($nTest > 0) ? sprintf("%.3f", 1.0*$nFail/$nTest) : 0; #"n/a";
-        $passLink = tfColor(sprintf("$nFail / %.1f", 100.0*$failRate), ($nPass==$nTest));
+        
+        $passLink = trafficLightColor(sprintf("$nFail / %.1f", 100.0*$failRate), $failRate, $grnLimit, $yelLimit);
         
         $row = array("n=".$nMatch, $specialGroupLabels[$sg], "n/a",
                      "$nTestSets / $nTestSetsFail", $nTest, $passLink);
@@ -2643,6 +2702,9 @@ function listSelected() {
 
 function writeTable_listTestResults() {
 
+    global $grnLimit;
+    global $yelLimit;
+    
     $groups = getGroupList();
     
     $summs = summarizeTestsFromCache();
@@ -2742,7 +2804,7 @@ function writeTable_listTestResults() {
             $filters[$i_f][$i] += $failrate;
             
             $link = "<a href=\"summary.php?test=$testDir&active=all&group=$group\">".
-                tfColor(sprintf("%.1f", 100.0*$failrate), ($npass==$ntest))."</a>\n";
+                trafficLightColor(sprintf("%.1f", 100.0*$failrate), $failrate, $grnLimit, $yelLimit)."</a>\n";
             $row[] = $link;
             $i += 1;
         }
@@ -2755,8 +2817,8 @@ function writeTable_listTestResults() {
     
     # grand totals
     for($i=2; $i < count($totals); $i++) {
-        $failrate = 100.0*$totals[$i]/count($rows);
-        $totals[$i] = tfColor(sprintf("%.2f", $failrate), (abs($failrate) < 1.0e-6));
+        $failrate = $totals[$i]/count($rows);
+        $totals[$i] = trafficLightColor(sprintf("%.2f", 100.0*$failrate), $failrate, $grnLimit, $yelLimit);
     }
     $table->addRow($totals, $attribs);
     $table->addRow(array_fill(0, count($totals), "&nbsp;"));
@@ -2772,8 +2834,8 @@ function writeTable_listTestResults() {
         $row = array("n=".$nfilters[$f], $f);
         for($i=2; $i < count($filters[$i_f]); $i++) {
             if ($nfilters[$f] > 0) {
-                $failrate = 100.0*$filters[$i_f][$i]/$nfilters[$f];
-                $row[] = tfColor(sprintf("%.2f", $failrate), (abs($failrate)<1.0e-6));
+                $failrate = $filters[$i_f][$i]/$nfilters[$f];
+                $row[] = trafficLightColor(sprintf("%.2f", 100.0*$failrate), $failrate, $grnLimit, $yelLimit);
             } else {
                 $row[] = "n/a";
             }
